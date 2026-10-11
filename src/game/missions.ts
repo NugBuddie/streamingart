@@ -11,6 +11,7 @@ import { CITY_BY_ID, ARCHETYPES, MONSTERS, banditFor, lootTable } from '../data/
 import { ITEMS, label } from '../data/items.js';
 import { MISSION_LENGTHS, MIN, bagCapacity, robotBag } from '../data/progression.js';
 import { tx } from '../db/index.js';
+import { log } from '../logger.js';
 
 // ------------------------------------------------------------------ start
 /** Auto-eat/drink the cheapest safe items from the bag to cover a shortfall ("bring food & water with you"). */
@@ -170,6 +171,7 @@ export function resolve(ctx: Ctx, missionId: number, opts: { notifyPlayer?: bool
             down = hp <= 0;
             ev.push(`🏴 **${att.name}**, a known criminal, ambushed you and stole ${lootText(stolen)} (-${myLost} HP)!`);
             db.prepare("INSERT INTO attack_log (kind,attacker_id,defender_id,city_id,outcome,loot_json,attacker_hp_lost,created_at) VALUES ('ambush',?,?,?,'success',?,?,?)").run(aid, p.id, city.id, JSON.stringify(stolen), att.hp - r.aHp, now);
+            log.info(`🏴 [pvp] ${att.name} AMBUSHED ${p.name} in ${city.name}, stole ${lootText(stolen)}`);
             notify(ctx, aid, 'ambush', `🏴 You ambushed **${p.name}** in ${city.name} and stole ${lootText(stolen)}.`);
           } else {
             ev.push(r.winner === 'b' ? `🏴 Criminal **${att.name}** jumped you — but you fought them off (-${myLost} HP)!` : `🏴 **${att.name}** ambushed you; the scuffle ended in a stalemate (-${myLost} HP).`);
@@ -210,6 +212,7 @@ export function resolve(ctx: Ctx, missionId: number, opts: { notifyPlayer?: bool
     const lootClean = Object.fromEntries(Object.entries(loot).filter(([, v]) => v > 0));
     db.prepare('INSERT INTO mission_log (mission_id,player_id,city_id,outcome,loot_json,events_json,hp_lost,vc_found,xp_gained,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
       .run(m.id, p.id, city.id, outcome, JSON.stringify(lootClean), JSON.stringify([...ev, ...lvl]), Math.max(0, hpLost), vc, xp, now);
+    log.info(`🧭 [mission] ${p.name} finished in ${city.name}: ${outcome}, loot ${lootText(lootClean)}${vc ? `, +${vc} VC` : ''}${hpLost > 0 ? `, -${hpLost} HP` : ''}`);
     if (opts.notifyPlayer) notify(ctx, p.id, 'mission', `🧭 Your ${m.length} mission in **${city.name}** is complete (${outcome}). Use \`/mission report\`.`);
     return db.prepare('SELECT * FROM mission_log WHERE mission_id = ?').get(m.id);
   });

@@ -15,6 +15,7 @@ import * as raids from './raids.js';
 import * as auth from './auth.js';
 import { tick, worldStatus } from './world.js';
 import { CITY_BY_ID } from '../data/world.js';
+import { log } from '../logger.js';
 
 type Args = Record<string, any>;
 interface ActionDef { method: 'GET' | 'POST'; player: boolean; run: (ctx: Ctx, pid: number, a: Args) => Result }
@@ -95,14 +96,24 @@ export const ACTIONS: Record<string, ActionDef> = {
   } },
 };
 
+const SECRET_KEYS = new Set(['code', 'token']);
+const fmtArgs = (a: Args) => Object.entries(a).filter(([k, v]) => v !== undefined && v !== null && !SECRET_KEYS.has(k)).map(([k, v]) => `${k}=${v}`).join(' ');
+
 /** Run an action by name. Applies due world events first so every response reflects current state. */
-export function run(ctx: Ctx, name: string, playerId: number | null, args: Args = {}): Result {
+export function run(ctx: Ctx, name: string, playerId: number | null, args: Args = {}, source = 'api'): Result {
   const def = ACTIONS[name];
   if (!def) throw new GameError(`Unknown action "${name}".`);
   tick(ctx);
-  if (def.player) {
-    if (playerId === null) throw new GameError('You are not registered yet. Use /register first.');
-    return def.run(ctx, playerId, args);
+  const who = playerId === null ? (name === 'player/register' ? String(args.name ?? '?') : '?') : ((ctx.db.prepare('SELECT name FROM players WHERE id = ?').get(playerId) as any)?.name ?? `#${playerId}`);
+  // read-only lookups are debug-level so the default terminal shows what players actually DO
+  const lvl = def.method === 'GET' ? 'debug' : 'info';
+  try {
+    if (def.player && playerId === null) throw new GameError('You are not registered yet. Use /register first.');
+    const r = def.run(ctx, playerId ?? 0, args);
+    log.log(lvl, `[${source}] ${who} ▶ ${name}${fmtArgs(args) ? ' ' + fmtArgs(args) : ''} → ${r.title}${r.lines[0] && name !== 'player/status' ? ` | ${r.lines[0].replace(/\*\*/g, '').slice(0, 110)}` : ''}`);
+    return r;
+  } catch (e) {
+    if (e instanceof GameError) log.log(lvl === 'debug' ? 'debug' : 'warn', `[${source}] ${who} ✖ ${name}${fmtArgs(args) ? ' ' + fmtArgs(args) : ''} → ${e.message}`);
+    throw e;
   }
-  return def.run(ctx, 0, args);
 }

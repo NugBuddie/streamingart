@@ -89,7 +89,9 @@ npm test                    # node:test suite (in-memory DB, fake clock)
 npm run typecheck
 ```
 
-Environment: `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `DISCORD_GUILD_ID`, `DB_PATH` (default `./data/void.db`), `WEB_PORT` (3000), `WEB_DEV_LOGIN` (0/1), `TICK_SECONDS` (30).
+Logging: Winston prints a live activity feed to the terminal (who did what, raids, ambushes, storms, monster attacks, finished missions, DMs) and writes JSON lines to `logs/void.log` (rotated, 5 × 5 MB). `LOG_LEVEL=debug` also shows read-only commands such as `/status`.
+
+Environment: `LOG_LEVEL` (info), `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `DISCORD_GUILD_ID`, `DB_PATH` (default `./data/void.db`), `WEB_PORT` (3000), `WEB_DEV_LOGIN` (0/1), `TICK_SECONDS` (30).
 
 Discord setup: create an application → Bot → copy the token; invite with scopes `bot applications.commands` (no privileged intents needed). Players must allow DMs from server members to receive raid alerts.
 

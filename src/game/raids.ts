@@ -8,6 +8,7 @@ import { CITY_BY_ID } from '../data/world.js';
 import { ITEMS, label } from '../data/items.js';
 import { MIN, doorMaxHp, turretDamage, turretHp, bagCapacity, robotBag } from '../data/progression.js';
 import { tx } from '../db/index.js';
+import { log as logger } from '../logger.js';
 
 /**
  * PvP shelter raid. Phases: traps -> turrets (+home robot) -> door -> loot.
@@ -75,6 +76,7 @@ export function raid(ctx: Ctx, attackerId: number, target: PlayerRow): Result {
       const lid = Number(db.prepare('INSERT INTO attack_log (kind,attacker_id,defender_id,city_id,outcome,turrets_destroyed,door_broken,loot_json,attacker_hp_lost,details,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
         .run('raid', a.id, t.id, t.home_city_id, outcome, destroyed, doorBroken ? 1 : 0, JSON.stringify(loot), lost, JSON.stringify(log), now).lastInsertRowid);
       db.prepare("INSERT INTO shelter_event_log (player_id,kind,delta_hp,event_key,details,created_at) VALUES (?,'raid',?,?,?,?)").run(t.id, 0, `raid:${lid}`, JSON.stringify({ attacker: a.name, outcome }), now);
+      logger.info(`⚔️ [pvp] RAID ${a.name} → ${t.name}: ${outcome.toUpperCase()}${outcome === 'success' ? `, stole ${lootText(loot)}` : ''}, ${destroyed} turret(s) destroyed`);
       notify(ctx, t.id, 'raid', outcome === 'success'
         ? `🚨 **${a.name}** raided your shelter! Door broken, ${destroyed} turret(s) lost. They stole ${lootText(loot)}. (Your vault was safe.)`
         : outcome === 'defeated' ? `🛡️ **${a.name}** attacked your shelter but your defenses took them down!${Object.keys(loot).length ? ` You scavenged ${lootText(loot)} from them.` : ''}`

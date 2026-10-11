@@ -5,6 +5,7 @@ import { GameError } from '../game/ctx.js';
 import { run } from '../game/actions.js';
 import { playerByDiscord } from '../game/store.js';
 import { route } from './router.js';
+import { log } from '../logger.js';
 import { CITIES } from '../data/world.js';
 import { ITEMS } from '../data/items.js';
 import { RECIPES } from '../data/recipes.js';
@@ -28,11 +29,11 @@ async function handle(ctx: Ctx, i: ChatInputCommandInteraction): Promise<void> {
   await i.deferReply({ ephemeral: r.ephemeral });
   try {
     const me = playerByDiscord(ctx, i.user.id);
-    const res = run(ctx, r.action, me?.id ?? null, r.args);
+    const res = run(ctx, r.action, me?.id ?? null, r.args, `discord:${i.user.username}`);
     await i.editReply({ embeds: [toEmbed(res, r.action)] });
   } catch (e) {
     if (e instanceof GameError) await i.editReply({ content: `❌ ${e.message}` });
-    else { console.error(`[bot] ${i.commandName} failed`, e); await i.editReply({ content: '💥 Something went wrong in the wasteland. Try again.' }); }
+    else { log.error(`[bot] /${i.commandName} crashed: ${(e as Error).stack ?? e}`); await i.editReply({ content: '💥 Something went wrong in the wasteland. Try again.' }); }
   }
 }
 
@@ -56,6 +57,7 @@ async function deliverNotifications(ctx: Ctx, client: Client): Promise<void> {
       const user = await client.users.fetch(n.discord_id);
       await user.send({ content: n.body });
       ctx.db.prepare('UPDATE notifications SET delivered_at = ? WHERE id = ?').run(Date.now(), n.id);
+      log.info(`[dm] → ${user.username}: ${String(n.body).replace(/\*\*/g, '').slice(0, 90)}`);
     } catch {
       ctx.db.prepare('UPDATE notifications SET attempts = attempts + 1 WHERE id = ?').run(n.id); // DMs closed, etc.
     }
@@ -67,14 +69,14 @@ export async function startBot(ctx: Ctx): Promise<Client> {
   if (!config.discordToken) throw new Error('DISCORD_TOKEN is not set');
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
   client.on(Events.InteractionCreate, (i) => {
-    if (i.isChatInputCommand()) handle(ctx, i).catch((e) => console.error('[bot] handler crashed', e));
+    if (i.isChatInputCommand()) handle(ctx, i).catch((e) => log.error(`[bot] handler crashed: ${e}`));
     else if (i.isAutocomplete()) autocomplete(i);
   });
-  client.on(Events.Error, (e) => console.error('[bot] client error', e));
+  client.on(Events.Error, (e) => log.error(`[bot] client error: ${e}`));
   client.once(Events.ClientReady, (c) => {
-    console.log(`[bot] logged in as ${c.user.tag}`);
+    log.info(`[bot] logged in as ${c.user.tag} — in ${c.guilds.cache.size} server(s)`);
     let busy = false;
-    setInterval(async () => { if (busy) return; busy = true; try { await deliverNotifications(ctx, client); } catch (e) { console.error('[bot] notify loop', e); } finally { busy = false; } }, 15_000);
+    setInterval(async () => { if (busy) return; busy = true; try { await deliverNotifications(ctx, client); } catch (e) { log.error(`[bot] notify loop: ${e}`); } finally { busy = false; } }, 15_000);
   });
   await client.login(config.discordToken);
   return client;

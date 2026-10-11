@@ -16,6 +16,7 @@ import { CITY_BY_ID, ARCHETYPES, MONSTERS } from '../data/world.js';
 import { MIN, turretDamage } from '../data/progression.js';
 import { ITEMS } from '../data/items.js';
 import { tx } from '../db/index.js';
+import { log } from '../logger.js';
 
 function cursor(ctx: Ctx, name: string, initial: number): number {
   ctx.db.prepare('INSERT OR IGNORE INTO watcher_cursors (name,cursor,updated_at) VALUES (?,?,?)').run(name, initial, ctx.now());
@@ -48,6 +49,7 @@ function applyStorm(ctx: Ctx, slot: number, slotStart: number): number {
     hit++;
     if (s.hp - dmg < s.max_hp * 0.5) notify(ctx, s.player_id, 'storm', `🌪️ A **${['', 'mild', 'strong', 'violent'][sev]} storm** battered your shelter (-${dmg} HP). It's at ${Math.max(0, s.hp - dmg)}/${s.max_hp} — repair with \`/shelter repair\` using scrap.`);
   }
+  log.info(`🌪️ [world] storm (${['', 'mild', 'strong', 'violent'][sev]}) hit ${hit} shelter(s)`);
   return hit;
 }
 
@@ -103,6 +105,7 @@ function monsterAttack(ctx: Ctx, slot: number, p: { id: number; city_id: string 
     .run(key, p.id, city.id, mo.id, outcome, dmg, JSON.stringify(loot), ctx.now());
   db.prepare("INSERT OR IGNORE INTO shelter_event_log (player_id,kind,delta_hp,event_key,details,created_at) VALUES (?,'monster',?,?,?,?)").run(p.id, -dmg, key, JSON.stringify({ monster: mo.id, outcome, notes }), ctx.now());
   notify(ctx, p.id, 'monster', msg);
+  log.info(`🐾 [world] ${mo.name} attacked ${(db.prepare('SELECT name FROM players WHERE id = ?').get(p.id) as any).name}'s shelter → ${outcome}`);
 }
 
 // -------------------------------------------------------------------- tick
@@ -134,7 +137,7 @@ export function tick(ctx: Ctx, force = false): void {
   });
   // missions are resolved one-by-one (each in its own tx) so one bad row can't block the rest
   const due = db.prepare("SELECT id FROM missions WHERE status = 'active' AND ends_at <= ?").all(now) as { id: number }[];
-  for (const m of due) { try { resolve(ctx, m.id, { notifyPlayer: true }); } catch (err) { console.error('mission resolve failed', m.id, err); } }
+  for (const m of due) { try { resolve(ctx, m.id, { notifyPlayer: true }); } catch (err) { log.error(`mission ${m.id} resolve failed: ${(err as Error).stack ?? err}`); } }
 }
 
 export function worldStatus(ctx: Ctx): { nextStormAt: number; stormSeverity: number; interval: number } {

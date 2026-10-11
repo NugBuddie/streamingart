@@ -11,6 +11,7 @@ import { ITEMS } from '../data/items.js';
 import { RECIPES } from '../data/recipes.js';
 import { CITIES } from '../data/world.js';
 import { CROPS } from '../data/crops.js';
+import { log } from '../logger.js';
 
 const PUBLIC_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'public');
 
@@ -47,6 +48,7 @@ export function createApp(ctx: Ctx): express.Express {
   app.post('/api/auth/exchange', wrap((req) => {
     if (!authLimit(req.ip ?? 'x')) throw new GameError('Too many attempts. Wait a minute.');
     const { token, playerId } = exchangeCode(ctx, String(req.body?.code ?? ''));
+    log.info(`[web] login via Discord code → player #${playerId}`);
     return { ok: true, token, playerId };
   }));
   // Local development only: name-only login (creates a web-only scavenger on first use).
@@ -56,6 +58,7 @@ export function createApp(ctx: Ctx): express.Express {
     const name = String(req.body?.name ?? '').trim();
     let p = playerByName(ctx, name);
     if (!p) { register(ctx, { name }); p = playerByName(ctx, name)!; }
+    log.info(`[web] dev login → ${p.name}`);
     return { ok: true, token: issueSession(ctx, p.id), playerId: p.id };
   }));
   app.post('/api/auth/logout', wrap((req) => { const t = tokenOf(req); if (t) revokeSession(ctx, t); return { ok: true }; }));
@@ -71,14 +74,14 @@ export function createApp(ctx: Ctx): express.Express {
     if (!apiLimit(String(pid))) { const e = new GameError('Rate limit: slow down.'); (e as any).status = 429; throw e; }
     const args = { ...(def.method === 'GET' ? req.query : req.body) } as Record<string, unknown>;
     delete args.discordId; delete args.playerId; // clients may only target players by name
-    const r = run(ctx, key, pid, args);
+    const r = run(ctx, key, pid, args, 'web');
     return { ok: true, ...r };
   }));
 
   app.use(express.static(PUBLIC_DIR));
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof GameError) return res.status(err.status ?? 400).json({ ok: false, error: err.message });
-    console.error('[web] error', err);
+    log.error(`[web] ${err?.stack ?? err}`);
     res.status(500).json({ ok: false, error: 'Internal error' });
   });
   return app;
@@ -86,5 +89,5 @@ export function createApp(ctx: Ctx): express.Express {
 
 export function startWeb(ctx: Ctx) {
   const app = createApp(ctx);
-  return app.listen(config.webPort, () => console.log(`[web] http://localhost:${config.webPort}${config.webDevLogin ? ' (dev login enabled)' : ''}`));
+  return app.listen(config.webPort, () => log.info(`[web] http://localhost:${config.webPort}${config.webDevLogin ? ' (dev login enabled)' : ''}`));
 }

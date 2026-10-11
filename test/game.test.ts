@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { openDb, migrate } from '../src/db/index.js';
 import type { Ctx } from '../src/game/ctx.js';
 import { run } from '../src/game/actions.js';
-import { vcApply, addItem, qty, loadPlayer } from '../src/game/store.js';
+import { vcApply, addItem, addEquipment, qty, loadPlayer } from '../src/game/store.js';
 import { tick } from '../src/game/world.js';
 import { resolve } from '../src/game/missions.js';
 import { MIN } from '../src/data/progression.js';
@@ -15,11 +15,21 @@ function setup() {
   let t = Date.UTC(2999, 0, 1, 12, 0, 0) - 2999 * 0; // fixed clock
   const ctx: Ctx = { db, now: () => t };
   const advance = (ms: number) => { t += ms; };
-  const reg = (name: string, discordId?: string, city = 'cinder_gate') => {
+  /** brand-new scavenger exactly as the game creates them (no shelter, no items) */
+  const regFresh = (name: string, discordId?: string, city = 'cinder_gate') => {
     const r = run(ctx, 'player/register', null, { name, discordId, city });
     return (r.data as any).playerId as number;
   };
-  return { db, ctx, advance, reg };
+  /** a "settled" scavenger for tests of mid-game systems: built shelter, workbench, a bat and some materials */
+  const reg = (name: string, discordId?: string, city = 'cinder_gate') => {
+    const id = regFresh(name, discordId, city);
+    db.prepare('UPDATE shelters SET built = 1, hp = max_hp, door_hp = 60 WHERE player_id = ?').run(id);
+    db.prepare("INSERT INTO shelter_structures (player_id,structure,level,quantity) VALUES (?,'workbench',1,1)").run(id);
+    for (const [i, n] of Object.entries({ scrap: 15, wood: 6, cloth: 4, canned_food: 2, clean_water: 2 })) addItem(db, id, i, n);
+    addEquipment(ctx, id, 'bat');
+    return id;
+  };
+  return { db, ctx, advance, reg, regFresh };
 }
 
 test('schema: 50 cities, singleton tables enforce id = 1', () => {
@@ -107,16 +117,18 @@ test('storm applies once per slot even if tick runs repeatedly', () => {
   assert.throws(() => db.prepare("INSERT INTO world_events (event_key,kind,slot,created_at) SELECT event_key,kind,slot,created_at FROM world_events LIMIT 1").run(), /UNIQUE/);
 });
 
-test('crafting: stove cooks, furnace needs power, structure limits', () => {
+test('crafting: stove cooks, furnace burns wood, structure limits', () => {
   const { ctx, db, reg } = setup();
   const pid = reg('Fay');
-  addItem(db, pid, 'scrap', 100); addItem(db, pid, 'wood', 50);
+  addItem(db, pid, 'scrap', 100); addItem(db, pid, 'wood', 50); addItem(db, pid, 'stone', 60);
   run(ctx, 'craft/make', pid, { recipe: 'stove' });
   run(ctx, 'craft/make', pid, { recipe: 'furnace' });
   addItem(db, pid, 'raw_meat', 2);
   run(ctx, 'craft/make', pid, { recipe: 'cook_meat', qty: 2 });
   assert.equal(qty(db, pid, 'cooked_meat'), 2);
-  assert.throws(() => run(ctx, 'craft/make', pid, { recipe: 'smelt_iron' }), /power/);
+  run(ctx, 'craft/make', pid, { recipe: 'smelt_scrap' }); // furnaces burn wood — no electricity needed
+  assert.equal(qty(db, pid, 'iron_ingot'), 1);
+  assert.throws(() => run(ctx, 'craft/make', pid, { recipe: 'forge_steel' }), /Missing/); // steel needs coal + iron
   assert.throws(() => run(ctx, 'craft/make', pid, { recipe: 'stove' }), /maximum/);
   const eat = run(ctx, 'player/use', pid, { item: 'cooked_meat', qty: 1 });
   assert.match(eat.lines[0], /food/);
@@ -327,4 +339,108 @@ test('crew vs crew raid steals from the rival crew vault, shields them, blocks r
   assert.ok((db.prepare("SELECT quantity q FROM crew_vault v JOIN crews c ON c.id = v.crew_id WHERE c.name = 'Att Crew' AND item_id = 'iron_ingot'").get() as any).q > 0);
   assert.throws(() => run(ctx, 'crewraid/start', att.ids[0], { kind: 'crew', target: 'Def Crew' }), /shielded|cooldown/);
   assert.ok((db.prepare('SELECT COUNT(*) n FROM notifications WHERE player_id = ?').get(def.ids[0]) as any).n >= 1);
+});
+
+
+// ---------------------------------------------------------------- fresh start / gathering / tiers
+test('new scavenger: full bars, nothing owned, no shelter; must pick a starter town', () => {
+  const { ctx, db, regFresh } = setup();
+  assert.throws(() => run(ctx, 'player/register', null, { name: 'Brave', city: 'void_s_edge' }), /starter towns/);
+  assert.throws(() => run(ctx, 'player/register', null, { name: 'Brave', city: 'kiln_town' }), /starter towns/);
+  const pid = regFresh('Newbie', undefined, 'pale_orchard');
+  const p = loadPlayer(ctx, pid);
+  assert.deepEqual([p.hp, p.energy, p.food, p.water], [100, 100, 100, 100]);
+  assert.equal(p.city_id, 'pale_orchard');
+  assert.equal((db.prepare('SELECT COUNT(*) n FROM player_inventory WHERE player_id = ?').get(pid) as any).n, 0);
+  assert.equal((db.prepare('SELECT COUNT(*) n FROM player_equipment WHERE player_id = ?').get(pid) as any).n, 0);
+  assert.equal((db.prepare('SELECT COUNT(*) n FROM shelter_structures WHERE player_id = ?').get(pid) as any).n, 0);
+  assert.equal((db.prepare('SELECT built FROM shelters WHERE player_id = ?').get(pid) as any).built, 0);
+  assert.match(run(ctx, 'shelter/view', pid).title, /No shelter/);
+  assert.match(run(ctx, 'player/status', pid).lines.join('\n'), /No shelter yet/);
+  assert.throws(() => run(ctx, 'shelter/build', pid), /Missing/);
+  assert.throws(() => run(ctx, 'craft/make', pid, { recipe: 'workbench' }), /shelter/);
+  assert.throws(() => run(ctx, 'vault/deposit', pid, { item: 'scrap', qty: 1 }), /shelter/);
+  assert.throws(() => run(ctx, 'gather/do', pid, { target: 'chop' }), /need an axe/);
+});
+
+test('first session: gather by hand -> stone tools -> wood/stone/cloth -> build shelter -> workbench', () => {
+  const { ctx, db, regFresh } = setup();
+  const pid = regFresh('Pioneer');
+  const top = () => db.prepare('UPDATE players SET energy = 100, food = 100, water = 100 WHERE id = ?').run(pid);
+  while (qty(db, pid, 'branch') < 4) { top(); run(ctx, 'gather/do', pid, { target: 'branches' }); }
+  while (qty(db, pid, 'small_stone') < 6) { top(); run(ctx, 'gather/do', pid, { target: 'stones' }); }
+  run(ctx, 'craft/make', pid, { recipe: 'stone_axe' });
+  run(ctx, 'craft/make', pid, { recipe: 'stone_pickaxe' });
+  while (qty(db, pid, 'wood') < 20) { top(); run(ctx, 'gather/do', pid, { target: 'chop' }); }
+  while (qty(db, pid, 'stone') < 14) { top(); run(ctx, 'gather/do', pid, { target: 'mine' }); }
+  while (qty(db, pid, 'cloth') < 6) { top(); run(ctx, 'gather/do', pid, { target: 'rags' }); }
+  assert.equal(qty(db, pid, 'copper_ore'), 0); // stone pickaxe can't find ore
+  const r = run(ctx, 'shelter/build', pid);
+  assert.match(r.title, /built/);
+  assert.throws(() => run(ctx, 'shelter/build', pid), /already/);
+  assert.equal((db.prepare('SELECT built, hp FROM shelters WHERE player_id = ?').get(pid) as any).built, 1);
+  addItem(db, pid, 'branch', 4); addItem(db, pid, 'wood', 8); addItem(db, pid, 'stone', 4);
+  run(ctx, 'craft/make', pid, { recipe: 'workbench' });
+  assert.equal((db.prepare("SELECT quantity q FROM shelter_structures WHERE player_id = ? AND structure = 'workbench'").get(pid) as any).q, 1);
+});
+
+test('stone tools break quickly; better tiers unlock ores', () => {
+  const { ctx, db, regFresh } = setup();
+  const pid = regFresh('Miner');
+  const top = () => db.prepare('UPDATE players SET energy = 100, food = 100, water = 100 WHERE id = ?').run(pid);
+  addItem(db, pid, 'branch', 2); addItem(db, pid, 'small_stone', 3);
+  run(ctx, 'craft/make', pid, { recipe: 'stone_pickaxe' });
+  for (let i = 0; i < 12; i++) { top(); run(ctx, 'gather/do', pid, { target: 'mine' }); }
+  assert.throws(() => run(ctx, 'gather/do', pid, { target: 'mine' }), /need a pickaxe/); // broke after 12 uses
+  assert.equal(qty(db, pid, 'copper_ore') + qty(db, pid, 'coal') + qty(db, pid, 'iron_ore'), 0);
+  // iron pickaxe: coal and iron ore appear
+  db.prepare("INSERT INTO player_equipment (player_id,item_id,durability,max_durability,equipped,location,created_at) VALUES (?,'iron_pickaxe',70,70,0,'bag',0)").run(pid);
+  for (let i = 0; i < 20; i++) { top(); run(ctx, 'gather/do', pid, { target: 'mine' }); }
+  assert.ok(qty(db, pid, 'iron_ore') + qty(db, pid, 'coal') + qty(db, pid, 'copper_ore') > 0);
+  assert.equal(qty(db, pid, 'adamantite_ore'), 0); // needs a forged-steel pickaxe in a dangerous city
+});
+
+test('metal chain: ore -> copper -> iron -> forged steel -> adamantium', () => {
+  const { ctx, db, reg } = setup();
+  const pid = reg('Smith');
+  for (const [i, n] of Object.entries({ stone: 40, scrap: 40, wood: 60, copper_ore: 8, iron_ore: 8, iron_ingot: 10, coal: 14, adamantite_ore: 3, rope: 10, cloth: 4 })) addItem(db, pid, i, n);
+  run(ctx, 'craft/make', pid, { recipe: 'furnace' });
+  run(ctx, 'craft/make', pid, { recipe: 'smelt_copper', qty: 4 });
+  run(ctx, 'craft/make', pid, { recipe: 'smelt_iron', qty: 4 });
+  assert.equal(qty(db, pid, 'copper_ingot'), 4);
+  run(ctx, 'craft/make', pid, { recipe: 'scrap_axe' });
+  run(ctx, 'craft/make', pid, { recipe: 'copper_pickaxe' });
+  run(ctx, 'craft/make', pid, { recipe: 'iron_pickaxe' });
+  run(ctx, 'craft/make', pid, { recipe: 'forge_steel', qty: 5 });
+  assert.equal(qty(db, pid, 'steel_ingot'), 5);
+  run(ctx, 'craft/make', pid, { recipe: 'steel_pickaxe' });
+  run(ctx, 'craft/make', pid, { recipe: 'forge_adamantium' });
+  assert.equal(qty(db, pid, 'adamantium_ingot'), 1);
+  assert.throws(() => run(ctx, 'craft/make', pid, { recipe: 'adamantium_axe' }), /Missing/); // needs 4 ingots
+});
+
+test('missions run in SECONDS in test mode (5/15/30)', () => {
+  const { ctx, db, regFresh, advance } = setup();
+  const pid = regFresh('Quick');
+  run(ctx, 'mission/start', pid, { length: 'quick' });
+  const m = db.prepare('SELECT started_at, ends_at FROM missions WHERE player_id = ?').get(pid) as any;
+  assert.equal(m.ends_at - m.started_at, 5_000);
+  assert.match(run(ctx, 'mission/report', pid).title, /in progress/);
+  advance(5_001);
+  assert.match(run(ctx, 'mission/report', pid).title, /Mission report/);
+  run(ctx, 'mission/start', pid, { length: 'deep' });
+  const d = db.prepare("SELECT started_at, ends_at FROM missions WHERE status = 'active'").get() as any;
+  assert.equal(d.ends_at - d.started_at, 30_000);
+});
+
+test('unbuilt shelters are not raided, stormed or attacked by monsters', () => {
+  const { ctx, db, reg, regFresh, advance } = setup();
+  const att = reg('Bully'), vic = regFresh('Homeless');
+  advance(200 * MIN);
+  assert.throws(() => run(ctx, 'attack/player', att, { name: 'Homeless' }), /not built a shelter/);
+  db.prepare('UPDATE players SET created_at = 0, last_seen_at = ? WHERE id = ?').run(ctx.now(), vic);
+  advance(5 * 60 * MIN);
+  tick(ctx, true);
+  assert.equal((db.prepare('SELECT COUNT(*) n FROM shelter_event_log WHERE player_id = ?').get(vic) as any).n, 0);
+  assert.equal((db.prepare('SELECT COUNT(*) n FROM monster_attack_log WHERE player_id = ?').get(vic) as any).n, 0);
 });

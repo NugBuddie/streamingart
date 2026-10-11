@@ -3,7 +3,7 @@ import { loadPlayer, structureLevel, takeItem, addItem, qty } from './store.js';
 import { CROPS, cropBySeed, MAX_PLANTERS } from '../data/crops.js';
 import { findItem, label } from '../data/items.js';
 import { MIN } from '../data/progression.js';
-import { requireHome } from './shelter.js';
+import { requireHome, requireShelter } from './shelter.js';
 import { Rng, freshSeed } from './rng.js';
 import { tx } from '../db/index.js';
 
@@ -52,6 +52,7 @@ export function plant(ctx: Ctx, pid: number, slot: number, seedQ: string): Resul
   return tx(ctx.db, () => {
     const { db } = ctx;
     requireHome(loadPlayer(ctx, pid));
+    requireShelter(ctx, pid);
     if (!Number.isInteger(slot) || slot < 1 || slot > slotCount(ctx, pid)) return fail(`Planter slot must be 1-${slotCount(ctx, pid) || '—'} (build more with /craft make planter, max ${MAX_PLANTERS}).`);
     if (db.prepare('SELECT 1 FROM planters WHERE player_id = ? AND slot = ?').get(pid, slot)) return fail('That planter is already in use.');
     takeItem(db, pid, crop.seed, 1);
@@ -67,6 +68,7 @@ export function water(ctx: Ctx, pid: number, slot: number): Result {
   return tx(ctx.db, () => {
     const { db } = ctx;
     requireHome(loadPlayer(ctx, pid));
+    requireShelter(ctx, pid);
     const r = db.prepare('SELECT * FROM planters WHERE player_id = ? AND slot = ?').get(pid, slot) as PlanterRow | undefined;
     if (!r) return fail('Nothing is planted there.');
     if (r.second_watered_at !== null) return fail('That crop has already had its second watering.');
@@ -83,6 +85,7 @@ export function harvest(ctx: Ctx, pid: number, slot?: number): Result {
   return tx(ctx.db, () => {
     const { db } = ctx;
     requireHome(loadPlayer(ctx, pid));
+    requireShelter(ctx, pid);
     const now = ctx.now();
     const rows = (db.prepare('SELECT * FROM planters WHERE player_id = ?' + (slot ? ' AND slot = ?' : '')).all(...(slot ? [pid, slot] : [pid])) as PlanterRow[])
       .filter((r) => { const t = readyAt(r); return t !== null && now >= t; });

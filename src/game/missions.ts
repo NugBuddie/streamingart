@@ -9,7 +9,7 @@ import { addXp } from './players.js';
 import { Rng, freshSeed } from './rng.js';
 import { CITY_BY_ID, ARCHETYPES, MONSTERS, banditFor, lootTable } from '../data/world.js';
 import { ITEMS, label } from '../data/items.js';
-import { MISSION_LENGTHS, MIN, bagCapacity, robotBag } from '../data/progression.js';
+import { MISSION_LENGTHS, MIN, bagCapacity, robotBag, missionMs, missionLabel, fmtLeft } from '../data/progression.js';
 import { tx } from '../db/index.js';
 import { log } from '../logger.js';
 
@@ -52,16 +52,16 @@ export function start(ctx: Ctx, pid: number, lengthId = 'standard'): Result {
     const penF = +(shortF / L.food).toFixed(3), penW = +(shortW / L.water).toFixed(3);
     db.prepare('UPDATE players SET energy = energy - ?, food = ?, water = ? WHERE id = ?').run(energy, Math.max(0, prov.food - L.food), Math.max(0, prov.water - L.water), pid);
     const mid = Number(db.prepare('INSERT INTO missions (player_id,city_id,length,started_at,ends_at,energy_cost,pen_food,pen_water,crew_size,seed) VALUES (?,?,?,?,?,?,?,?,?,?)')
-      .run(pid, p.city_id, L.id, now, now + L.minutes * MIN, energy, penF, penW, crew.size, freshSeed()).lastInsertRowid);
+      .run(pid, p.city_id, L.id, now, now + missionMs(L), energy, penF, penW, crew.size, freshSeed()).lastInsertRowid);
     const city = CITY_BY_ID[p.city_id];
     const lines = [
-      `🧭 You head into **${city.name}** for a **${L.id}** scavenge (${L.minutes} min). -${energy}⚡ -${L.food}🍖 -${L.water}💧`,
+      `🧭 You head into **${city.name}** for a **${L.id}** scavenge (${missionLabel(L)}). -${energy}⚡ -${L.food}🍖 -${L.water}💧`,
       ...(prov.used.length ? [`🎒 You ate/drank from your pack to prepare: ${prov.used.join(', ')}.`] : []),
       ...(penF || penW ? [`⚠️ Supplies short (${Math.round(penF * 100)}% food, ${Math.round(penW * 100)}% water): expect less loot and more injuries!`] : []),
       ...(crew.energyDiscount ? [`👥 Crew discount applied (-${Math.round(crew.energyDiscount * 100)}% energy).`] : []),
-      `Back at <t:${Math.floor((now + L.minutes * MIN) / 1000)}:t> — check \`/mission report\`.`,
+      `Back in ${fmtLeft(missionMs(L))} — check \`/mission report\`.`,
     ];
-    return result('Mission started', lines, { missionId: mid, endsAt: now + L.minutes * MIN });
+    return result('Mission started', lines, { missionId: mid, endsAt: now + missionMs(L) });
   });
 }
 
@@ -248,8 +248,7 @@ export function report(ctx: Ctx, pid: number): Result {
   const active = db.prepare("SELECT * FROM missions WHERE player_id = ? AND status = 'active'").get(pid) as MissionRow | undefined;
   if (active) {
     if (active.ends_at > ctx.now()) {
-      const left = Math.ceil((active.ends_at - ctx.now()) / MIN);
-      return result('Mission in progress', [`🧭 Scavenging in **${CITY_BY_ID[active.city_id].name}** — ${left} min left (back at <t:${Math.floor(active.ends_at / 1000)}:t>).`], { active });
+      return result('Mission in progress', [`🧭 Scavenging in **${CITY_BY_ID[active.city_id].name}** — ${fmtLeft(active.ends_at - ctx.now())} left.`], { active });
     }
     return fmtLog(resolve(ctx, active.id));
   }

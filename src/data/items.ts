@@ -33,6 +33,8 @@ export interface ItemDef {
   sickChance?: number;
   weapon?: WeaponStats;
   durability?: number;
+  /** gathering tools: what they do and how good they are (1 stone … 6 adamantium) */
+  tool?: { type: 'axe' | 'pickaxe'; tier: number };
   desc?: string;
 }
 
@@ -52,6 +54,17 @@ const defs: ItemDef[] = [
   { id: 'tea_leaves', name: 'Tea Leaves', emoji: '🍃', kind: 'material', value: 4 },
   { id: 'coffee_beans', name: 'Coffee Beans', emoji: '🫘', kind: 'material', value: 5 },
   { id: 'hops', name: 'Hops', emoji: '🌿', kind: 'material', value: 4 },
+  // gathered by hand / with tools
+  { id: 'branch', name: 'Branch', emoji: '🌿', kind: 'material', value: 0.5, desc: 'Picked up by hand.' },
+  { id: 'small_stone', name: 'Small Stone', emoji: '🪨', kind: 'material', value: 0.5, desc: 'Picked up by hand.' },
+  { id: 'stone', name: 'Stone', emoji: '🧱', kind: 'material', value: 1.5, desc: 'Mined with a pickaxe. Shelters, furnaces and stoves are built from it.' },
+  { id: 'coal', name: 'Coal', emoji: '⚫', kind: 'material', value: 3 },
+  { id: 'copper_ore', name: 'Copper Ore', emoji: '🟠', kind: 'material', value: 4 },
+  { id: 'iron_ore', name: 'Iron Ore', emoji: '🔶', kind: 'material', value: 4 },
+  { id: 'adamantite_ore', name: 'Adamantite Ore', emoji: '💠', kind: 'material', value: 18 },
+  { id: 'copper_ingot', name: 'Copper Ingot', emoji: '🟧', kind: 'material', value: 7 },
+  { id: 'steel_ingot', name: 'Forged Steel Ingot', emoji: '⬛', kind: 'material', value: 14 },
+  { id: 'adamantium_ingot', name: 'Adamantium Ingot', emoji: '🔷', kind: 'material', value: 45 },
 
   // ---- ammo ----
   { id: 'pebbles', name: 'Pebbles', emoji: '⚪', kind: 'ammo', value: 0.5 },
@@ -104,6 +117,19 @@ const defs: ItemDef[] = [
   { id: 'slingshot', name: 'Slingshot', emoji: '🪃', kind: 'weapon', value: 25, durability: 60, weapon: { min: 8, max: 14, ranged: true, ammo: 'pebbles', breach: 0.3 } },
   { id: 'bow', name: 'Bow', emoji: '🏹', kind: 'weapon', value: 55, durability: 50, weapon: { min: 14, max: 22, ranged: true, ammo: 'arrows', breach: 0.5 } },
   { id: 'rifle', name: 'Rifle', emoji: '🔫', kind: 'weapon', value: 180, durability: 80, weapon: { min: 28, max: 42, ranged: true, ammo: 'bullets', breach: 1.6 } },
+  { id: 'stone_axe', name: 'Stone Axe', emoji: '🪓', kind: 'tool', value: 6, durability: 12, tool: { type: 'axe', tier: 1 }, desc: 'Chops wood (tier 1).' },
+  { id: 'stone_pickaxe', name: 'Stone Pickaxe', emoji: '⛏️', kind: 'tool', value: 6, durability: 12, tool: { type: 'pickaxe', tier: 1 }, desc: 'Mines stone and ore (tier 1).' },
+  { id: 'scrap_axe', name: 'Scrap Axe', emoji: '🪓', kind: 'tool', value: 20, durability: 30, tool: { type: 'axe', tier: 2 }, desc: 'Chops wood (tier 2).' },
+  { id: 'scrap_pickaxe', name: 'Scrap Pickaxe', emoji: '⛏️', kind: 'tool', value: 20, durability: 30, tool: { type: 'pickaxe', tier: 2 }, desc: 'Mines stone and ore (tier 2).' },
+  { id: 'copper_axe', name: 'Copper Axe', emoji: '🪓', kind: 'tool', value: 40, durability: 45, tool: { type: 'axe', tier: 3 }, desc: 'Chops wood (tier 3).' },
+  { id: 'copper_pickaxe', name: 'Copper Pickaxe', emoji: '⛏️', kind: 'tool', value: 40, durability: 45, tool: { type: 'pickaxe', tier: 3 }, desc: 'Mines stone and ore (tier 3).' },
+  { id: 'iron_axe', name: 'Iron Axe', emoji: '🪓', kind: 'tool', value: 70, durability: 70, tool: { type: 'axe', tier: 4 }, desc: 'Chops wood (tier 4).' },
+  { id: 'iron_pickaxe', name: 'Iron Pickaxe', emoji: '⛏️', kind: 'tool', value: 70, durability: 70, tool: { type: 'pickaxe', tier: 4 }, desc: 'Mines stone and ore (tier 4).' },
+  { id: 'steel_axe', name: 'Forged Steel Axe', emoji: '🪓', kind: 'tool', value: 140, durability: 110, tool: { type: 'axe', tier: 5 }, desc: 'Chops wood (tier 5).' },
+  { id: 'steel_pickaxe', name: 'Forged Steel Pickaxe', emoji: '⛏️', kind: 'tool', value: 140, durability: 110, tool: { type: 'pickaxe', tier: 5 }, desc: 'Mines stone and ore (tier 5).' },
+  { id: 'adamantium_axe', name: 'Adamantium Axe', emoji: '🪓', kind: 'tool', value: 400, durability: 200, tool: { type: 'axe', tier: 6 }, desc: 'Chops wood (tier 6).' },
+  { id: 'adamantium_pickaxe', name: 'Adamantium Pickaxe', emoji: '⛏️', kind: 'tool', value: 400, durability: 200, tool: { type: 'pickaxe', tier: 6 }, desc: 'Mines stone and ore (tier 6).' },
+  { id: 'club', name: 'Wooden Club', emoji: '🏑', kind: 'weapon', value: 8, durability: 25, weapon: { min: 5, max: 9, breach: 0.8 } },
   { id: 'ratchet', name: 'Ratchet', emoji: '🔧', kind: 'tool', value: 150, durability: 30, desc: 'Strips cars & machinery: +40% salvage yield and bonus batteries/circuits.' },
 ];
 

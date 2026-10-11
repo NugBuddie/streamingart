@@ -19,6 +19,8 @@ const COMMON: LootEntry[] = [
   { item: 'dirty_water', w: 14, min: 1, max: 3 },
   { item: 'canned_food', w: 7, min: 1, max: 2 },
   { item: 'pebbles', w: 6, min: 4, max: 12 },
+  { item: 'stone', w: 9, min: 1, max: 3 },
+  { item: 'branch', w: 8, min: 1, max: 4 },
   { item: 'battery', w: 4, min: 1, max: 1, salvage: true },
   { item: 'seed_potato', w: 2, min: 1, max: 2 },
   { item: 'seed_carrot', w: 2, min: 1, max: 2 },
@@ -35,7 +37,8 @@ export const ARCHETYPES: Record<Archetype, { label: string; loot: LootEntry[]; m
     { item: 'coffee_beans', w: 6, min: 1, max: 2 }, { item: 'canned_food', w: 8, min: 1, max: 3 } ] },
   industrial: { label: 'Dead factory belt', monsters: ['gutter_crawler', 'rust_ghoul', 'iron_behemoth'], loot: [
     { item: 'scrap', w: 40, min: 4, max: 9, salvage: true }, { item: 'iron_ingot', w: 8, min: 1, max: 2, salvage: true },
-    { item: 'battery', w: 10, min: 1, max: 2, salvage: true }, { item: 'circuit', w: 5, min: 1, max: 1, salvage: true } ] },
+    { item: 'battery', w: 10, min: 1, max: 2, salvage: true }, { item: 'circuit', w: 5, min: 1, max: 1, salvage: true },
+    { item: 'copper_ore', w: 8, min: 1, max: 3 }, { item: 'coal', w: 6, min: 1, max: 3 } ] },
   suburb: { label: 'Ghost suburb', monsters: ['shade_rat', 'ash_hound', 'gutter_crawler'], loot: [
     { item: 'cloth', w: 18, min: 2, max: 4 }, { item: 'wood', w: 16, min: 2, max: 5 },
     { item: 'canned_food', w: 10, min: 1, max: 3 }, { item: 'seed_tomato', w: 3, min: 1, max: 2 }, { item: 'tea_leaves', w: 5, min: 1, max: 2 } ] },

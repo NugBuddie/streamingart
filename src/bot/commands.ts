@@ -1,6 +1,9 @@
 import { SlashCommandBuilder, type SlashCommandSubcommandBuilder } from 'discord.js';
 
-const LENGTHS = [{ name: 'quick (5 min, 10⚡)', value: 'quick' }, { name: 'standard (15 min, 20⚡)', value: 'standard' }, { name: 'deep (30 min, 35⚡)', value: 'deep' }];
+import { MISSION_LENGTHS, missionLabel } from '../data/progression.js';
+import { START_CITIES, CITY_BY_ID } from '../data/world.js';
+
+const LENGTHS = Object.values(MISSION_LENGTHS).map((l) => ({ name: `${l.id} (${missionLabel(l)}, ${l.energy}⚡)`, value: l.id }));
 
 const sub = (name: string, desc: string, f?: (s: SlashCommandSubcommandBuilder) => SlashCommandSubcommandBuilder) =>
   (s: SlashCommandSubcommandBuilder) => { s.setName(name).setDescription(desc); return f ? f(s) : s; };
@@ -8,7 +11,12 @@ const sub = (name: string, desc: string, f?: (s: SlashCommandSubcommandBuilder) 
 export const commandBuilders = [
   new SlashCommandBuilder().setName('register').setDescription('Join the game as a scavenger')
     .addStringOption((o) => o.setName('name').setDescription('Your scavenger name (3-24 chars)').setRequired(true))
-    .addStringOption((o) => o.setName('city').setDescription('Starting city (optional)').setAutocomplete(true)),
+    .addStringOption((o) => o.setName('city').setDescription('Where you wake up (safe starter towns)').setRequired(true)
+      .addChoices(...START_CITIES.map((c) => ({ name: `${CITY_BY_ID[c].name} — ${CITY_BY_ID[c].archetype}`, value: c })))),
+  new SlashCommandBuilder().setName('gather').setDescription('Pick up, chop or mine materials (no shelter needed)')
+    .addStringOption((o) => o.setName('target').setDescription('What to gather').setRequired(true).addChoices(
+      { name: '🌿 branches (by hand)', value: 'branches' }, { name: '🪨 small stones (by hand)', value: 'stones' }, { name: '🧵 rags / cloth (by hand)', value: 'rags' },
+      { name: '🪓 chop wood (needs an axe)', value: 'chop' }, { name: '⛏️ mine stone & ore (needs a pickaxe)', value: 'mine' })),
   new SlashCommandBuilder().setName('status').setDescription('Energy, food, water, shelter and mission status'),
   new SlashCommandBuilder().setName('inventory').setDescription('List your items, gear and vault'),
   new SlashCommandBuilder().setName('use').setDescription('Eat, drink or heal with an item')
@@ -31,6 +39,7 @@ export const commandBuilders = [
 
   new SlashCommandBuilder().setName('shelter').setDescription('Your shelter')
     .addSubcommand(sub('view', 'Shelter status, structures and upgrades'))
+    .addSubcommand(sub('build', 'Build your starter shelter (wood, stone, cloth)'))
     .addSubcommand(sub('upgrade', 'Upgrade shelter, door, vault, power bank, turrets or robot', (s) =>
       s.addStringOption((o) => o.setName('target').setDescription('What to upgrade').setRequired(true).addChoices(
         ...['shelter', 'door', 'vault', 'power_bank', 'turret', 'robot'].map((v) => ({ name: v, value: v }))))))

@@ -36,7 +36,7 @@ function applyStorm(ctx: Ctx, slot: number, slotStart: number): number {
   const { db } = ctx;
   const sev = stormSeverity(slot);
   db.prepare("INSERT OR IGNORE INTO world_events (event_key,kind,slot,payload,created_at) VALUES (?,'storm',?,?,?)").run(`storm:${slot}`, slot, JSON.stringify({ severity: sev }), ctx.now());
-  const shelters = db.prepare('SELECT s.*, p.created_at AS pc FROM shelters s JOIN players p ON p.id = s.player_id WHERE p.created_at <= ?').all(slotStart) as (ShelterRow & { pc: number })[];
+  const shelters = db.prepare('SELECT s.*, p.created_at AS pc FROM shelters s JOIN players p ON p.id = s.player_id WHERE s.built = 1 AND p.created_at <= ?').all(slotStart) as (ShelterRow & { pc: number })[];
   let hit = 0;
   for (const s of shelters) {
     const factor = CITY_BY_ID[s.city_id].stormFactor;
@@ -64,6 +64,7 @@ function monsterAttack(ctx: Ctx, slot: number, p: { id: number; city_id: string 
   if (!rng.chance(Math.min(0.6, city.monsterRate * 0.5 * w.monster_attack_rate))) return;
   if (db.prepare('SELECT 1 FROM monster_attack_log WHERE event_key = ?').get(key)) return;
   const sh = db.prepare('SELECT * FROM shelters WHERE player_id = ?').get(p.id) as ShelterRow;
+  if (!sh.built) return; // no shelter, nothing for monsters to attack
   const pool = ARCHETYPES[city.archetype].monsters.map((id) => MONSTERS[id]).filter((m) => m.minDanger <= city.danger && m.maxDanger >= city.danger);
   const mo = rng.pick(pool.length ? pool : Object.values(MONSTERS).filter((m) => m.minDanger <= city.danger));
   let mhp = mo.hp, power = sh.power_charge;

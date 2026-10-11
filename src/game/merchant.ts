@@ -14,8 +14,8 @@ import { tx } from '../db/index.js';
 import type { DB } from '../db/index.js';
 
 const SELL_POOL = ['seed_potato', 'seed_carrot', 'seed_cabbage', 'seed_tomato', 'seed_corn', 'seed_pepper', 'seed_berries', 'arrows', 'bullets', 'bandage', 'medkit',
-  'battery', 'circuit', 'tea_leaves', 'coffee_beans', 'hops', 'gunpowder', 'iron_ingot', 'bow', 'rifle', 'ratchet'];
-const BUY_POOL = ['scrap', 'wood', 'cloth', 'wire', 'rope', 'iron_ingot', 'battery', 'monster_hide', 'bone', 'canned_food', 'clean_water', 'cooked_meat', 'potato', 'tomato'];
+  'battery', 'circuit', 'tea_leaves', 'coffee_beans', 'hops', 'gunpowder', 'iron_ingot', 'copper_ingot', 'coal', 'bow', 'rifle', 'ratchet'];
+const BUY_POOL = ['scrap', 'wood', 'cloth', 'wire', 'rope', 'iron_ingot', 'battery', 'monster_hide', 'bone', 'canned_food', 'clean_water', 'cooked_meat', 'potato', 'tomato', 'stone', 'coal'];
 const MERCHANT_DAILY_VC_CAP = 150;
 
 export type Fairness = 'good' | 'fair' | 'poor' | 'scam';
@@ -88,6 +88,7 @@ export function ensureCityVisit(ctx: Ctx, cityId: string): void {
   insertVisit(ctx, key, 'city', cityId, null, slot, start, expires);
 }
 export function ensureShelterVisit(ctx: Ctx, pid: number): void {
+  if (!(ctx.db.prepare('SELECT built FROM shelters WHERE player_id = ?').get(pid) as any)?.built) return;
   const w = worldState(ctx.db);
   const slot = currentSlot(ctx), start = slot * w.merchant_slot_minutes * MIN;
   const expires = start + w.merchant_stay_minutes * MIN;

@@ -9,6 +9,7 @@ export function route(i: ChatInputCommandInteraction): Route {
   const user = () => ({ discordId: o.getUser('user', true).id });
   switch (i.commandName) {
     case 'register': return { action: 'player/register', args: { name: o.getString('name', true), city: o.getString('city'), discordId: i.user.id } };
+    case 'gather': return { action: 'gather/do', args: { target: o.getString('target', true) } };
     case 'status': return { action: 'player/status', args: {} };
     case 'inventory': return { action: 'player/inventory', args: {}, ephemeral: true };
     case 'use': return { action: 'player/use', args: { item: o.getString('item', true), qty: o.getInteger('qty') ?? 1 } };
@@ -20,6 +21,7 @@ export function route(i: ChatInputCommandInteraction): Route {
     case 'mission': return sub === 'start' ? { action: 'mission/start', args: { length: o.getString('length') ?? 'standard' } } : { action: 'mission/report', args: {} };
     case 'shelter':
       switch (sub) {
+        case 'build': return { action: 'shelter/build', args: {} };
         case 'upgrade': return { action: 'shelter/upgrade', args: { target: o.getString('target', true) } };
         case 'repair': return { action: 'shelter/repair', args: { target: o.getString('target') ?? 'shelter' } };
         case 'charge': return { action: 'shelter/charge', args: { batteries: o.getInteger('batteries') ?? 1 } };

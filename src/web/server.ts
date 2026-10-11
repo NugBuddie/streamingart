@@ -11,6 +11,8 @@ import { ITEMS } from '../data/items.js';
 import { RECIPES } from '../data/recipes.js';
 import { CITIES } from '../data/world.js';
 import { CROPS } from '../data/crops.js';
+import { MISSION_LENGTHS } from '../data/progression.js';
+import { START_CITIES } from '../data/world.js';
 import { log } from '../logger.js';
 
 const PUBLIC_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'public');
@@ -41,7 +43,7 @@ export function createApp(ctx: Ctx): express.Express {
   // ---- public
   app.get('/api/health', (_req, res) => { res.json({ ok: true }); });
   app.get('/api/catalog', (_req, res) => {
-    res.json({ ok: true, items: ITEMS, recipes: RECIPES, cities: CITIES, crops: CROPS, devLogin: config.webDevLogin });
+    res.json({ ok: true, items: ITEMS, recipes: RECIPES, cities: CITIES, crops: CROPS, devLogin: config.webDevLogin, missionLengths: Object.values(MISSION_LENGTHS), missionUnit: config.missionUnit === 'seconds' ? 'sec' : 'min', starters: START_CITIES });
   });
 
   // ---- auth
@@ -57,7 +59,7 @@ export function createApp(ctx: Ctx): express.Express {
     if (!authLimit(req.ip ?? 'x')) throw new GameError('Too many attempts. Wait a minute.');
     const name = String(req.body?.name ?? '').trim();
     let p = playerByName(ctx, name);
-    if (!p) { register(ctx, { name }); p = playerByName(ctx, name)!; }
+    if (!p) { register(ctx, { name, city: req.body?.city }); p = playerByName(ctx, name)!; }
     log.info(`[web] dev login → ${p.name}`);
     return { ok: true, token: issueSession(ctx, p.id), playerId: p.id };
   }));

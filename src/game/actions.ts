@@ -7,6 +7,7 @@ import { loadPlayer, playerByDiscord, playerByName, economy, type PlayerRow } fr
 import * as players from './players.js';
 import * as missions from './missions.js';
 import * as shelter from './shelter.js';
+import * as gathering from './gathering.js';
 import * as crafting from './crafting.js';
 import * as farming from './farming.js';
 import * as crews from './crews.js';
@@ -53,10 +54,12 @@ export const ACTIONS: Record<string, ActionDef> = {
     ], { ...w, merchantHere: !!here.n });
   } },
 
+  'gather/do': { method: 'POST', player: true, run: (c, p, a) => gathering.gather(c, p, str(a.target, 'target')) },
   'mission/start': { method: 'POST', player: true, run: (c, p, a) => missions.start(c, p, a.length ?? 'standard') },
   'mission/report': { method: 'POST', player: true, run: (c, p) => missions.report(c, p) },
 
   'shelter/view': { method: 'GET', player: true, run: (c, p) => shelter.view(c, p) },
+  'shelter/build': { method: 'POST', player: true, run: (c, p) => shelter.build(c, p) },
   'shelter/upgrade': { method: 'POST', player: true, run: (c, p, a) => shelter.upgrade(c, p, str(a.target, 'target')) },
   'shelter/repair': { method: 'POST', player: true, run: (c, p, a) => shelter.repair(c, p, a.target === 'door' ? 'door' : 'shelter') },
   'shelter/charge': { method: 'POST', player: true, run: (c, p, a) => shelter.charge(c, p, num(a.batteries, 1)!) },

@@ -13,7 +13,7 @@ export interface PlayerRow {
 }
 export interface ShelterRow {
   player_id: number; city_id: string; level: number; hp: number; max_hp: number; door_level: number; door_hp: number;
-  vault_level: number; power_charge: number; updated_at: number;
+  vault_level: number; power_charge: number; built: number; updated_at: number;
 }
 export interface EquipRow { id: number; player_id: number; item_id: string; durability: number; max_durability: number; equipped: number; location: string }
 

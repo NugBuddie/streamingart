@@ -1,10 +1,34 @@
 import { randomUUID } from 'node:crypto';
 import { type Ctx, fail, result, type Result } from './ctx.js';
-import { loadPlayer, shelterOf, structureLevel, pay, fmtCost, qty, takeItem, hasStructure, type PlayerRow } from './store.js';
-import { UPGRADES, doorMaxHp, shelterMaxHp, powerCapacity, turretDamage, turretHp, VAULT_CAPACITY } from '../data/progression.js';
+import { loadPlayer, shelterOf, structureLevel, pay, fmtCost, qty, takeItem, hasStructure, missing, type PlayerRow } from './store.js';
+import { UPGRADES, SHELTER_BUILD_COST, doorMaxHp, shelterMaxHp, powerCapacity, turretDamage, turretHp, VAULT_CAPACITY } from '../data/progression.js';
 import { STRUCTURE_NAMES } from '../data/recipes.js';
 import { CITY_BY_ID } from '../data/world.js';
 import { tx } from '../db/index.js';
+
+/** Throws unless the player has actually built their shelter. */
+export function requireShelter(ctx: Ctx, pid: number): void {
+  if (!shelterOf(ctx.db, pid).built) fail(`You have no shelter yet. Gather wood, stone and cloth, then \`/shelter build\` (${fmtCost(SHELTER_BUILD_COST)}).`);
+}
+
+/** Build the starter shelter (first and only time). It is built where you stand, and that town becomes your home. */
+export function build(ctx: Ctx, pid: number): Result {
+  return tx(ctx.db, () => {
+    const { db } = ctx;
+    const p = loadPlayer(ctx, pid);
+    const sh = shelterOf(db, pid);
+    if (sh.built) return fail('You already have a shelter. See `/shelter view`.');
+    if (db.prepare("SELECT 1 FROM missions WHERE player_id = ? AND status = 'active'").get(pid)) return fail('Finish your mission first.');
+    pay(ctx, pid, SHELTER_BUILD_COST, 'build');
+    db.prepare('UPDATE shelters SET built = 1, city_id = ?, hp = max_hp, door_hp = ?, updated_at = ? WHERE player_id = ?').run(p.city_id, doorMaxHp(1), ctx.now(), pid);
+    db.prepare('UPDATE players SET home_city_id = ? WHERE id = ?').run(p.city_id, pid);
+    db.prepare('INSERT INTO upgrade_log (player_id,target,from_level,to_level,cost_json,created_at) VALUES (?,?,?,?,?,?)').run(pid, 'shelter', 0, 1, JSON.stringify(SHELTER_BUILD_COST), ctx.now());
+    return result('Shelter built!', [
+      `🏚️ You lash together a basic shelter in **${CITY_BY_ID[p.city_id].name}** for ${fmtCost(SHELTER_BUILD_COST)}. This town is now your home.`,
+      'It comes with a door and a small vault. Next: a **workbench** (`/craft make recipe:workbench`), then better tools and stations.',
+    ]);
+  });
+}
 
 /** Shelter-bound actions only work in your home city. */
 export function requireHome(p: PlayerRow): void {
@@ -15,6 +39,14 @@ export function view(ctx: Ctx, pid: number): Result {
   const { db } = ctx;
   const p = loadPlayer(ctx, pid);
   const sh = shelterOf(db, pid);
+  if (!sh.built) {
+    const missingBits = missing(db, pid, SHELTER_BUILD_COST);
+    return result('No shelter yet', [
+      '🏕️ You sleep under open sky. You have no shelter, no workbench, nothing — gather the materials and build one.',
+      `**Cost:** ${fmtCost(SHELTER_BUILD_COST)}${missingBits.length ? ` — still missing: ${missingBits.join(', ')}` : ' — you have everything! Run `/shelter build`.'}`,
+      '', '🌿 `/gather target:branches` · 🪨 `/gather target:stones` → craft a Stone Axe & Pickaxe → `/gather target:chop` (wood), `/gather target:mine` (stone), `/gather target:rags` (cloth).',
+    ], { shelter: sh, structures: [], events: [], built: false, cost: SHELTER_BUILD_COST, missing: missingBits });
+  }
   const st = db.prepare('SELECT structure, level, quantity FROM shelter_structures WHERE player_id = ? AND quantity > 0').all(pid) as any[];
   const lines = [
     `📍 ${CITY_BY_ID[sh.city_id].name}${p.city_id !== p.home_city_id ? ' (you are away)' : ''}`,
@@ -55,6 +87,7 @@ export function upgrade(ctx: Ctx, pid: number, target: string): Result {
     const { db } = ctx;
     const p = loadPlayer(ctx, pid);
     requireHome(p);
+    requireShelter(ctx, pid);
     const lv = currentLevel(ctx, pid, target);
     if (lv === null) return fail(`You haven't built a ${target.replace('_', ' ')} yet.`);
     if (lv >= u.max) return fail(`${target} is already at max level.`);
@@ -85,6 +118,7 @@ export function repair(ctx: Ctx, pid: number, target: 'shelter' | 'door'): Resul
     const { db } = ctx;
     const p = loadPlayer(ctx, pid);
     requireHome(p);
+    requireShelter(ctx, pid);
     const sh = shelterOf(db, pid);
     const missingHp = target === 'shelter' ? sh.max_hp - sh.hp : doorMaxHp(sh.door_level) - sh.door_hp;
     if (missingHp <= 0) return fail(`Your ${target} is in perfect shape.`);
@@ -108,6 +142,7 @@ export function charge(ctx: Ctx, pid: number, batteries: number): Result {
   return tx(ctx.db, () => {
     const { db } = ctx;
     requireHome(loadPlayer(ctx, pid));
+    requireShelter(ctx, pid);
     const bank = structureLevel(db, pid, 'power_bank');
     if (!bank) return fail('Build a power bank first (`/craft make power_bank`).');
     const cap = powerCapacity(bank.level), sh = shelterOf(db, pid);
@@ -126,6 +161,7 @@ export function discharge(ctx: Ctx, pid: number, times = 1): Result {
     const { db } = ctx;
     const p = loadPlayer(ctx, pid);
     requireHome(p);
+    requireShelter(ctx, pid);
     const sh = shelterOf(db, pid);
     const n = Math.min(times, Math.floor(sh.power_charge / 10), Math.ceil((p.max_energy - p.energy) / 25));
     if (n <= 0) return fail(p.energy >= p.max_energy ? 'Your energy is already full.' : 'Not enough stored power (need 10).');

@@ -2,7 +2,7 @@ import { type Ctx, fail, result, type Result } from './ctx.js';
 import { loadPlayer, shelterOf, hasStructure, structureLevel, pay, fmtCost, missing, addItem, addEquipment, equipmentOf } from './store.js';
 import { RECIPES, RECIPE_BY_ID, STRUCTURE_LIMITS, STRUCTURE_NAMES, type Recipe } from '../data/recipes.js';
 import { ITEMS, label, findItem } from '../data/items.js';
-import { requireHome } from './shelter.js';
+import { requireHome, requireShelter } from './shelter.js';
 import { tx } from '../db/index.js';
 
 const STATION_NAME: Record<string, string> = { hand: '✋ By hand', workbench: '🛠️ Workbench', furnace: '🔥 Furnace', stove: '🍳 Stove', purifier: '🚰 Purifier' };
@@ -36,8 +36,11 @@ export function make(ctx: Ctx, pid: number, recipeQ: string, times = 1): Result 
   return tx(ctx.db, () => {
     const { db } = ctx;
     const p = loadPlayer(ctx, pid);
-    if (r.station !== 'hand') {
+    if (r.station !== 'hand' || r.kind === 'structure') {
       requireHome(p);
+      requireShelter(ctx, pid);
+    }
+    if (r.station !== 'hand') {
       if (!hasStructure(db, pid, STATION_STRUCT[r.station])) return fail(`You need a ${STATION_NAME[r.station]} (build it at the workbench) for this.`);
     }
     if (r.kind === 'structure') {
@@ -81,6 +84,7 @@ export function repairItem(ctx: Ctx, pid: number, ref: string): Result {
   return tx(ctx.db, () => {
     const { db } = ctx;
     requireHome(loadPlayer(ctx, pid));
+    requireShelter(ctx, pid);
     if (!hasStructure(db, pid, 'repair_bench')) return fail('You need a 🔨 Repair Bench (craft it at the workbench).');
     const id = Number(String(ref).replace('#', ''));
     const eq = equipmentOf(db, pid);
@@ -118,6 +122,7 @@ export function robotRepair(ctx: Ctx, pid: number): Result {
   return tx(ctx.db, () => {
     const { db } = ctx;
     requireHome(loadPlayer(ctx, pid));
+    requireShelter(ctx, pid);
     if (!hasStructure(db, pid, 'repair_bench')) return fail('You need a 🔨 Repair Bench.');
     const r = db.prepare('SELECT * FROM robots WHERE player_id = ?').get(pid) as any;
     if (!r) return fail('You have no Scav-Bot.');

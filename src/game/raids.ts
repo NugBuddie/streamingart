@@ -22,6 +22,7 @@ export function raid(ctx: Ctx, attackerId: number, target: PlayerRow): Result {
     const a = loadPlayer(ctx, attackerId);
     const t = loadPlayer(ctx, target.id);
     if (a.id === t.id) return fail('You cannot raid yourself.');
+    if (!shelterOf(db, t.id).built) return fail(`${t.name} has not built a shelter yet — nothing to raid.`);
     if (areCrewmates(db, a.id, t.id)) return fail('You do not raid your own crew.');
     if (db.prepare("SELECT 1 FROM missions WHERE player_id = ? AND status = 'active'").get(a.id)) return fail('Finish your mission first.');
     if (a.city_id !== t.home_city_id) return fail(`${t.name}'s shelter is in **${CITY_BY_ID[t.home_city_id].name}**. Travel there first (you are in ${CITY_BY_ID[a.city_id].name}).`);

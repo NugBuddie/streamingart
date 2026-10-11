@@ -53,7 +53,7 @@ const views = {
         💧 Water ${p.water}/${p.max_water}${bar(p.water, p.max_water, 'var(--blue)')}
         <p>🪙 <b>${p.void_coins}</b> Void Coins ${p.karma <= -3 ? '· 🏴 <b>criminal</b>' : ''}</p></div>
       <div class="card"><h3>📍 ${esc(city.name)}</h3><p class="muted">${city.region} · danger ${'⚠️'.repeat(city.danger)} · ${city.archetype}</p>
-        <p>🏚️ Shelter L${s.level}: ${s.hp}/${s.max_hp} HP · door ${s.door_hp} HP · ⚡ power ${s.power_charge}</p>
+        <p>${s.built ? `🏚️ Shelter L${s.level}: ${s.hp}/${s.max_hp} HP · door ${s.door_hp} HP · ⚡ power ${s.power_charge}` : '🏕️ <b>No shelter yet</b> — gather wood, stone &amp; cloth, then build it on the Shelter tab.'}</p>
         ${crew ? `<p>👥 [${esc(crew.tag)}] ${esc(crew.name)}</p>` : ''}
         ${mission ? `<p>🧭 Mission ${mission.ends_at <= Date.now() ? '<b>ready!</b>' : 'ends ' + new Date(mission.ends_at).toLocaleTimeString()}</p>` : ''}</div>
     </div>
@@ -63,14 +63,20 @@ const views = {
     const [c, st] = await Promise.all([api('world/cities'), api('player/status')]);
     const cur = c.data.current, list = c.data.cities;
     const m = st.data.mission;
+    const lens = catalog.missionLengths;
     return `<div class="card"><h3>Scavenge in ${esc(list.find((x) => x.id === cur).name)}</h3>
       ${m ? `<p>Mission active until ${new Date(m.ends_at).toLocaleTimeString()}.</p>${btn('Report', 'rep')}` : `<div class="row">
-        ${btn('Quick (5m, 10⚡)', 'go', 'data-l="quick"')}${btn('Standard (15m, 20⚡)', 'go', 'data-l="standard"')}${btn('Deep (30m, 35⚡)', 'go', 'data-l="deep"')}</div>
+        ${lens.map((l) => btn(`${l.id} (${l.duration}${catalog.missionUnit}, ${l.energy}⚡)`, 'go', `data-l="${l.id}"`)).join('')}</div>
         <p class="muted">Missions use food & water bars (and eat from your pack if you're short).</p>${btn('Report', 'rep alt')}`}</div>
+      <div class="card"><h3>🌿 Gather <span class="muted">(no shelter needed)</span></h3><div class="row">
+        ${btn('🌿 Branches', 'ga alt', 'data-t="branches"')}${btn('🪨 Small stones', 'ga alt', 'data-t="stones"')}${btn('🧵 Rags (cloth)', 'ga alt', 'data-t="rags"')}
+        ${btn('🪓 Chop wood', 'ga', 'data-t="chop"')}${btn('⛏️ Mine stone/ore', 'ga', 'data-t="mine"')}</div>
+        <p class="muted">Craft a Stone Axe / Pickaxe from branches + small stones (Craft tab). They break fast — climb the tool tiers: stone → scrap → copper → iron → forged steel → adamantium.</p></div>
       <div class="card"><h3>Travel</h3><div class="row"><select id="dest">${list.map((x) => `<option value="${x.id}" ${x.id === cur ? 'selected' : ''}>${esc(x.name)} — ${x.region}, ${'⚠'.repeat(x.danger)}, ${x.travel}⚡</option>`).join('')}</select>${btn('Travel', 'trav')}</div></div>`;
   },
   async shelter() {
     const [r, d] = await Promise.all([api('shelter/view'), api('shelter/defense')]);
+    if (r.data.built === false) return `<div class="card">${linesHtml(r.lines)}${btn('🏚️ Build shelter', 'bd')}</div>`;
     return `<div class="card">${linesHtml(r.lines)}<div class="row">
       ${['shelter', 'door', 'vault', 'power_bank', 'turret', 'robot'].map((t) => btn(`⬆ ${t}`, 'alt up', `data-t="${t}"`)).join('')}</div>
       <hr><div class="row">${btn('🔧 Repair shelter', 'rp', 'data-t="shelter"')}${btn('🔧 Repair door', 'rp', 'data-t="door"')}
@@ -162,6 +168,7 @@ async function consumables() {
 const handlers = {
   '.go': (e) => act('mission/start', { length: e.dataset.l }), '.rep': () => act('mission/report', undefined),
   '.trav': () => act('world/travel', { city: $('#dest').value }),
+  '.ga': (e) => act('gather/do', { target: e.dataset.t }), '.bd': () => act('shelter/build', {}),
   '.up': (e) => act('shelter/upgrade', { target: e.dataset.t }), '.rp': (e) => act('shelter/repair', { target: e.dataset.t }),
   '.chg': () => act('shelter/charge', { batteries: +$('#bat').value }), '.dis': () => act('shelter/discharge', {}),
   '.mk': (e) => act('craft/make', { recipe: e.dataset.r }),
@@ -211,11 +218,12 @@ async function loginWith(path, body) {
   catch (e) { $('#loginErr').textContent = e.message; }
 }
 $('#codeForm').addEventListener('submit', (e) => { e.preventDefault(); loginWith('auth/exchange', { code: $('#code').value }); });
-$('#devForm').addEventListener('submit', (e) => { e.preventDefault(); loginWith('auth/dev-login', { name: $('#devName').value }); });
+$('#devForm').addEventListener('submit', (e) => { e.preventDefault(); loginWith('auth/dev-login', { name: $('#devName').value, city: $('#devCity').value }); });
 
 (async () => {
   catalog = await (await fetch('/api/catalog')).json();
   $('#devBox').hidden = !catalog.devLogin;
+  $('#devCity').innerHTML = catalog.starters.map((id) => `<option value="${id}">${esc(catalog.cities.find((c) => c.id === id).name)}</option>`).join('');
   if (token) showApp(); else $('#login').hidden = false;
-  setInterval(() => { if (token && ['status', 'mission', 'farm'].includes(tab) && !document.hidden) { cache = {}; render(); } }, 15000);
+  setInterval(() => { if (token && ['status', 'mission', 'farm'].includes(tab) && !document.hidden) { cache = {}; render(); } }, 5000);
 })();

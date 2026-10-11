@@ -36,6 +36,7 @@ Scavenge 50 cities, craft weapons and a shelter, farm on your roof, fight monste
 | Singletons (`CHECK (id = 1)`) | `economy_stats` (loot multiplier, VC drop rate/caps, VC value, scam rate, crew sizes/costs, raid rules, totals minted/burned), `world_state` (storm & merchant & monster cadence, catch-up cap) |
 | Cursors / idempotent events | `watcher_cursors` (last processed slot per watcher), `world_events` (`event_key` UNIQUE) |
 | Crew vault & raids (migration 002) | `crew_vault`, `crew_vault_log`, `crew_raids` (one open lobby per crew via partial unique index), `crew_raid_members` (what each paid → exact refunds), `crew_raid_log` (`raid_id` UNIQUE) |
+| Shelter ownership (migration 003) | `shelters.built` — 0 until the player builds it; storms, monsters, raids and shelter features skip unbuilt shelters |
 | Entities | `players`, `shelters`, `shelter_structures (player_id, structure)`, `planters (player_id, slot)`, `robots`, `player_inventory (player_id, item_id)`, `player_equipment` (instances w/ durability), `vault_contents`, `missions`, `cities`, `crews`, `crew_members`, `crew_invites`, `merchant_visits/offers/trades` |
 | Append-only logs | `mission_log`, `attack_log`, `monster_attack_log`, `shelter_event_log`, `craft_log`, `upgrade_log`, `void_coin_transactions`, `player_spend_log`, `notifications` |
 | Web | `web_link_codes`, `web_sessions` |
@@ -56,10 +57,11 @@ Notable constraints: partial unique index `ux_missions_one_active` (one active m
 ## 4. Gameplay summary (all numbers are tunable)
 
 * **Bars:** HP, ⚡ energy (regens 1/3 min, half-speed when starving), 🍖 food, 💧 water.
-* **Missions** (`quick` 5 min/10⚡, `standard` 15/20, `deep` 30/35): timed, resolved by the ticker or `/mission report`. They burn food+water; short supplies are auto-covered from safe pack items, any remaining shortfall cuts loot (up to −80 %), raises injury damage, and ≥120 % shortage makes you collapse (25 % loot). Bag size limits loot (robot adds space).
+* **Missions** (`quick` 5/10⚡, `standard` 15/20, `deep` 30/35 — **seconds** in test mode, minutes with `MISSION_TIME_UNIT=minutes`): timed, resolved by the ticker or `/mission report`. They burn food+water; short supplies are auto-covered from safe pack items, any remaining shortfall cuts loot (up to −80 %), raises injury damage, and ≥120 % shortage makes you collapse (25 % loot). Bag size limits loot (robot adds space).
 * **Encounters:** monsters (kill ⇒ meat/hide/bone…), bandits (rob you or drop loot), criminal players (karma ≤ −3) who can **ambush** you in the same city, and the merchant.
 * **Combat:** best usable weapon is used automatically (bat, knife, spear, slingshot+pebbles, bow+arrows, rifle+bullets); durability wears and ammo is consumed; repair at the Repair Bench. **Ratchet**: +40 % salvage and bonus batteries/circuits.
-* **Shelter:** workbench (start), repair bench, water purifier, power bank, furnace, stove, turrets (≤4, 1 power/shot), traps (≤8), planters (≤6). Upgrade shelter/door/vault/power bank/turret/robot. **Vault** items and Void Coins are raid-proof. **Storms** every 4 h (mild/strong/violent, scaled per city); repair with scrap.
+* **Fresh start:** you wake up in a starter town of your choice (the four safest, danger-1 Ashfall towns: Cinder Gate, Ember Hollow, Soot Market, Pale Orchard) with **full HP / energy / food / water and nothing else** — no items, no shelter, no buildings. `/gather` branches & small stones by hand → craft a fragile **Stone Axe / Pickaxe** (break after ~12 uses) → chop wood, mine stone, search rags for cloth → `/shelter build` (12 wood, 10 stone, 6 cloth; that town becomes your home) → build a workbench and the rest. Tool ladder: **stone → scrap → copper → iron → forged steel → adamantium** (better tiers yield more and unlock coal, copper, iron and — in dangerous cities — adamantite ore). Furnaces burn wood/coal, so the whole metal chain works without electricity.
+* **Shelter:** (built by you) workbench, repair bench, water purifier, power bank, furnace, stove, turrets (≤4, 1 power/shot), traps (≤8), planters (≤6). Upgrade shelter/door/vault/power bank/turret/robot. **Vault** items and Void Coins are raid-proof. **Storms** every 4 h (mild/strong/violent, scaled per city); repair with scrap.
 * **Raids:** go to the target's home city, `/attack player`. Traps → turrets (+home robot) → door → loot ≤30 % of non-vault stacks. New-player protection (3 h), post-raid shield (1 h), per-target cooldown (6 h), karma penalty for raiding honest players.
 * **Farming:** crops 20–60 min; needs clean water at planting **and** mid-growth (late watering delays harvest).
 * **Water/food chain:** dirty → purifier (power) → clean water; stove turns 1–5 food crops into 20–50 food and brews tea/coffee/beer (more water than plain water).
@@ -71,7 +73,7 @@ Notable constraints: partial unique index `ux_missions_one_active` (one active m
 
 ## 5. Discord commands
 
-`/register /status /inventory /use /equip /world /cities /players /travel` · `/mission start|report` · `/shelter view|upgrade|repair|charge|recharge` · `/defend` · `/vault view|deposit|withdraw` · `/craft list|make|repair` · `/planter list|plant|water|harvest` · `/robot view|mode|repair` · `/attack player` · `/crew create|invite|join|leave|kick|expand|info|vault|deposit|reward|perms` · `/crewraid targets|start|join|leave|launch|cancel|status` · `/merchant view|trade` · `/voidcoins` · `/weblogin` · `/notifications`
+`/register /gather /status /inventory /use /equip /world /cities /players /travel` · `/mission start|report` · `/shelter view|build|upgrade|repair|charge|recharge` · `/defend` · `/vault view|deposit|withdraw` · `/craft list|make|repair` · `/planter list|plant|water|harvest` · `/robot view|mode|repair` · `/attack player` · `/crew create|invite|join|leave|kick|expand|info|vault|deposit|reward|perms` · `/crewraid targets|start|join|leave|launch|cancel|status` · `/merchant view|trade` · `/voidcoins` · `/weblogin` · `/notifications`
 
 ## 6. Web client
 
@@ -94,7 +96,7 @@ npm run typecheck
 
 Logging: Winston prints a live activity feed to the terminal (who did what, raids, ambushes, storms, monster attacks, finished missions, DMs) and writes JSON lines to `logs/void.log` (rotated, 5 × 5 MB). `LOG_LEVEL=debug` also shows read-only commands such as `/status`.
 
-Environment: `LOG_LEVEL` (info), `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `DISCORD_GUILD_ID`, `DB_PATH` (default `./data/void.db`), `WEB_PORT` (3000), `WEB_DEV_LOGIN` (0/1), `TICK_SECONDS` (30).
+Environment: `MISSION_TIME_UNIT` (`seconds` = test mode, default; `minutes` = real pace), `LOG_LEVEL` (info), `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `DISCORD_GUILD_ID`, `DB_PATH` (default `./data/void.db`), `WEB_PORT` (3000), `WEB_DEV_LOGIN` (0/1), `TICK_SECONDS` (5).
 
 Discord setup: create an application → Bot → copy the token; invite with scopes `bot applications.commands` (no privileged intents needed). Players must allow DMs from server members to receive raid alerts.
 

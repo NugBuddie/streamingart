@@ -1,36 +1,37 @@
 import { type Ctx, fail, result, type Result } from './ctx.js';
 import {
   inOpenCrewRaid, loadPlayer, shelterOf, addItem, takeItem, inventory, equipmentOf, addEquipment, bar,
-  vaultUsed, vaultCapacity, isCriminal, economy,
+  vaultUsed, vaultCapacity, isCriminal, economy, fmtCost,
 } from './store.js';
 import { CITY_BY_ID, CITIES, REGIONS, START_CITIES, findCity, travelCost } from '../data/world.js';
 import { ITEMS, label, findItem, isEquipment } from '../data/items.js';
-import { PLAYER, maxHpFor, xpForNext, shelterMaxHp, doorMaxHp, MIN, bagCapacity, robotBag } from '../data/progression.js';
+import { PLAYER, maxHpFor, xpForNext, shelterMaxHp, doorMaxHp, MIN, bagCapacity, robotBag, fmtLeft, SHELTER_BUILD_COST } from '../data/progression.js';
 import { Rng, freshSeed } from './rng.js';
 import { tx } from '../db/index.js';
-import { requireHome } from './shelter.js';
+import { requireHome, requireShelter } from './shelter.js';
 
 export function register(ctx: Ctx, opts: { name: string; discordId?: string; city?: string }): Result {
   const name = opts.name.trim();
   if (!/^[A-Za-z0-9_][A-Za-z0-9_ ]{1,22}[A-Za-z0-9_]$/.test(name)) fail('Name must be 3-24 characters: letters, numbers, spaces or underscores.');
+  const chosen = opts.city ? findCity(opts.city) : undefined;
+  if (opts.city && (!chosen || !START_CITIES.includes(chosen.id))) fail(`Pick one of the starter towns: ${START_CITIES.map((c) => CITY_BY_ID[c].name).join(', ')}.`);
   return tx(ctx.db, () => {
     const { db } = ctx;
     if (opts.discordId && db.prepare('SELECT 1 FROM players WHERE discord_id = ?').get(opts.discordId)) fail('You are already registered. Use /status.');
     if (db.prepare('SELECT 1 FROM players WHERE name = ?').get(name)) fail('That name is taken.');
-    const chosen = opts.city ? findCity(opts.city) : undefined;
-    const cityId = chosen && START_CITIES.includes(chosen.id) ? chosen.id : START_CITIES[Math.floor(Math.random() * START_CITIES.length)];
+    const cityId = chosen?.id ?? START_CITIES[Math.floor(Math.random() * START_CITIES.length)];
     const now = ctx.now();
     const maxHp = maxHpFor(1);
+    // Full HP / energy / food / water, no items, and only an UNBUILT shelter plot (built = 0).
     const pid = Number(db.prepare(`INSERT INTO players (discord_id,name,city_id,home_city_id,hp,max_hp,energy,food,water,protected_until,last_energy_at,created_at,last_seen_at)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(opts.discordId ?? null, name, cityId, cityId, maxHp, maxHp, PLAYER.startEnergy, PLAYER.startFood, PLAYER.startWater,
       now + economy(db).newbie_protect_minutes * MIN, now, now, now).lastInsertRowid);
-    db.prepare('INSERT INTO shelters (player_id,city_id,hp,max_hp,door_hp,updated_at) VALUES (?,?,?,?,?,?)').run(pid, cityId, shelterMaxHp(1), shelterMaxHp(1), doorMaxHp(1), now);
-    db.prepare("INSERT INTO shelter_structures (player_id,structure,level,quantity) VALUES (?,'workbench',1,1)").run(pid);
-    for (const [i, n] of Object.entries(PLAYER.startItems)) addItem(db, pid, i, n);
-    addEquipment(ctx, pid, 'bat');
+    db.prepare('INSERT INTO shelters (player_id,city_id,hp,max_hp,door_hp,built,updated_at) VALUES (?,?,0,?,0,0,?)').run(pid, cityId, shelterMaxHp(1), now);
     return result(`Welcome, ${name}!`, [
-      `You wake in **${CITY_BY_ID[cityId].name}** (${CITY_BY_ID[cityId].region}). Your shelter is a patched-up basement with a workbench.`,
-      'Try `/status`, then `/mission start`, and `/craft list` to see what you can build.',
+      `You wake up in **${CITY_BY_ID[cityId].name}** (${CITY_BY_ID[cityId].region}) with nothing but the clothes on your back — full HP, energy, food and water.`,
+      '**1.** `/gather target:branches` and `/gather target:stones` to pick up branches and small stones.',
+      '**2.** `/craft make recipe:stone_axe` and `stone_pickaxe` (fragile — they break fast!), then `/gather target:chop` for wood and `/gather target:mine` for stone. `/gather target:rags` finds cloth.',
+      `**3.** Build your shelter with \`/shelter build\` (${fmtCost(SHELTER_BUILD_COST)}), then a workbench to craft better tools: scrap → copper → iron → forged steel → adamantium.`,
       `🛡️ New-player protection: ${economy(db).newbie_protect_minutes} minutes without raids.`,
     ], { playerId: pid });
   });
@@ -67,12 +68,12 @@ export function status(ctx: Ctx, pid: number): Result {
     `🍖 Food    ${bar(p.food, p.max_food)} ${p.food}/${p.max_food}`,
     `💧 Water   ${bar(p.water, p.max_water)} ${p.water}/${p.max_water}`,
     `⭐ Level ${p.level} (${p.xp}/${xpForNext(p.level)} xp) · 🪙 ${p.void_coins} Void Coins${isCriminal(p) ? ' · 🏴 **Criminal**' : ''}`,
-    `🏚️ Shelter L${sh.level}: ${sh.hp}/${sh.max_hp} HP · door ${sh.door_hp}/${doorMaxHp(sh.door_level)} · ⚡ power ${sh.power_charge}`,
+    sh.built ? `🏚️ Shelter L${sh.level}: ${sh.hp}/${sh.max_hp} HP · door ${sh.door_hp}/${doorMaxHp(sh.door_level)} · ⚡ power ${sh.power_charge}` : `🏕️ **No shelter yet** — gather wood, stone & cloth, then \`/shelter build\` (${fmtCost(SHELTER_BUILD_COST)}).`,
     `🎒 ${units} carried units in ${Object.keys(inv).length} stacks · vault ${vaultUsed(db, pid)}/${vaultCapacity(db, pid)} · weapon: ${weapon ? label(weapon.item_id) : '—'}`,
   ];
   if (robot) lines.push(`🤖 Scav-Bot L${robot.level} (${robot.mode === 'mission' ? 'on missions' : 'guarding home'}) ${robot.durability}/${robot.max_durability}`);
   if (crew) lines.push(`👥 Crew [${crew.tag}] ${crew.name}`);
-  if (mission) lines.push(mission.ends_at <= now ? '🧭 **Mission finished!** Use `/mission report`.' : `🧭 Mission in ${CITY_BY_ID[mission.city_id].name}: ${Math.ceil((mission.ends_at - now) / MIN)} min left.`);
+  if (mission) lines.push(mission.ends_at <= now ? '🧭 **Mission finished!** Use `/mission report`.' : `🧭 Mission in ${CITY_BY_ID[mission.city_id].name}: ${fmtLeft(mission.ends_at - now)} left.`);
   if (p.protected_until > now) lines.push(`🛡️ New-player protection for ${Math.ceil((p.protected_until - now) / MIN)} more min.`);
   else if (p.raid_shield_until > now) lines.push(`🛡️ Raid shield for ${Math.ceil((p.raid_shield_until - now) / MIN)} more min.`);
   if (p.food < 15 || p.water < 15) lines.push('⚠️ **You are running low on food/water** — missions will suffer penalties.');
@@ -145,6 +146,7 @@ export function vaultMove(ctx: Ctx, pid: number, dir: 'deposit' | 'withdraw', re
   n = Math.max(1, Math.floor(n));
   return tx(db, () => {
     requireHome(loadPlayer(ctx, pid));
+    requireShelter(ctx, pid);
     const d = findItem(ref);
     const eqId = Number(String(ref).replace('#', ''));
     if (d ? isEquipment(d.id) : Number.isFinite(eqId) && eqId > 0) {

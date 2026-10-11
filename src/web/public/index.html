@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Void Scavengers</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>☢️ Void Scavengers <small>2999</small></h1>
+  <div id="who"></div>
+</header>
+
+<section id="login" hidden>
+  <div class="card narrow">
+    <h2>Log in</h2>
+    <p>In Discord run <code>/weblogin</code> and paste the one-time code here.</p>
+    <form id="codeForm"><input id="code" placeholder="ABCD2345" maxlength="8" autocomplete="off"><button>Log in</button></form>
+    <div id="devBox" hidden>
+      <hr><p class="muted">Dev login (WEB_DEV_LOGIN=1)</p>
+      <form id="devForm"><input id="devName" placeholder="Scavenger name"><select id="devCity"></select><button>Enter wasteland</button></form>
+    </div>
+    <p id="loginErr" class="err"></p>
+  </div>
+</section>
+
+<main id="app" hidden>
+  <nav id="tabs"></nav>
+  <div id="toast" role="status"></div>
+  <div id="panel"></div>
+</main>
+<script src="app.js" type="module"></script>
+</body>
+</html>

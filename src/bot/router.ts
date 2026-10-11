@@ -15,6 +15,7 @@ export function route(i: ChatInputCommandInteraction): Route {
     case 'equip': return { action: 'player/equip', args: { item: o.getString('item', true) } };
     case 'world': return { action: 'world/status', args: {} };
     case 'cities': return { action: 'world/cities', args: { region: o.getString('region') ?? undefined }, ephemeral: true };
+    case 'players': return { action: 'world/players', args: {} };
     case 'travel': return { action: 'world/travel', args: { city: o.getString('city', true) } };
     case 'mission': return sub === 'start' ? { action: 'mission/start', args: { length: o.getString('length') ?? 'standard' } } : { action: 'mission/report', args: {} };
     case 'shelter':

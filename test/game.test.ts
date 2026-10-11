@@ -216,3 +216,15 @@ test('travel, vault limits, robot craft', () => {
   run(ctx, 'craft/make', pid, { recipe: 'scav_bot' });
   assert.match(run(ctx, 'robot/mode', pid, { mode: 'home' }).lines[0], /guards/);
 });
+
+test('players list shows raid targets in the current city', () => {
+  const { ctx, db, reg, advance } = setup();
+  const a = reg('Seeker'), b = reg('Target');
+  let r = run(ctx, 'world/players', a);
+  assert.equal((r.data as any).players[0].raidable, false); // newbie protection
+  advance(200 * MIN);
+  db.prepare('UPDATE players SET city_id = ? WHERE id = ?').run('cinder_gate', a);
+  r = run(ctx, 'world/players', a);
+  assert.equal((r.data as any).players[0].raidable, true);
+  void b;
+});

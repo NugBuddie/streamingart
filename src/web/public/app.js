@@ -40,7 +40,7 @@ const bar = (v, max, color) => `<div class="bar"><i style="width:${Math.max(0, M
 const itemLabel = (id, n) => { const d = catalog.items[id]; return `${d ? d.emoji + ' ' + d.name : id}${n === undefined ? '' : ' ×' + n}`; };
 
 // ------------------------------------------------------------------ tabs
-const TABS = ['status', 'mission', 'shelter', 'craft', 'farm', 'inventory', 'crew', 'merchant', 'alerts'];
+const TABS = ['status', 'mission', 'shelter', 'craft', 'farm', 'inventory', 'raid', 'crew', 'merchant', 'alerts'];
 const views = {
   async status() {
     const r = await api('player/status'); cache.status = r.data;
@@ -99,6 +99,13 @@ const views = {
       <div class="card"><h3>🔒 Vault</h3>${vault.map((v) => `<div class="slot"><span>${itemLabel(v.item_id, v.quantity)}</span>${btn('Take', 'alt vw', `data-i="${v.item_id}"`)}</div>`).join('') || '<p class="muted">Empty</p>'}
       ${equipment.filter((e) => e.location === 'vault').map((e) => `<div class="slot"><span>#${e.id} ${itemLabel(e.item_id)}</span>${btn('Take', 'alt vw', `data-i="${e.id}"`)}</div>`).join('')}</div></div>`;
   },
+  async raid() {
+    const r = await api('world/players');
+    const ps = r.data.players;
+    return `<div class="card"><h3>⚔️ Raid shelters</h3><p class="muted">You can only raid scavengers whose shelter is in your current city (travel on the Mission tab). Costs 15⚡. Vault items and Void Coins are safe from raids.</p>
+      <table>${ps.map((x) => `<tr><td><b>${esc(x.name)}</b> L${x.level} ${x.crew ? `[${esc(x.crew)}]` : ''} ${x.criminal ? '🏴' : ''}</td><td class="muted">${x.home ? 'shelter here' : 'visiting'}${x.reason ? ' · ' + esc(x.reason) : ''}</td>
+      <td>${btn('Raid', 'atk' + (x.raidable ? '' : ' alt'), `data-n="${esc(x.name)}" ${x.raidable ? '' : 'disabled'}`)}</td></tr>`).join('') || '<tr><td class="muted">Nobody else is around.</td></tr>'}</table></div>`;
+  },
   async crew() {
     try {
       const r = await api('crew/info');
@@ -142,6 +149,7 @@ const handlers = {
   '.vd': (e) => act('vault/deposit', { item: e.dataset.i, qty: 1 }), '.vw': (e) => act('vault/withdraw', { item: e.dataset.i, qty: 1 }),
   '.cc': () => act('crew/create', { name: $('#cn').value, tag: $('#ct').value }), '.cj': () => act('crew/join', { name: $('#jn').value }),
   '.ci': () => act('crew/invite', { name: $('#inv').value }), '.cx': () => act('crew/expand', {}), '.cl': () => act('crew/leave', {}),
+  '.atk': (e) => act('attack/player', { name: e.dataset.n }),
   '.tr': (e) => act('merchant/trade', { offer: +e.dataset.o }),
 };
 $('#panel').addEventListener('click', (ev) => {

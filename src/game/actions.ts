@@ -37,6 +37,7 @@ export const ACTIONS: Record<string, ActionDef> = {
   'vault/withdraw': { method: 'POST', player: true, run: (c, p, a) => players.vaultMove(c, p, 'withdraw', str(String(a.item ?? ''), 'item'), num(a.qty, 1)) },
 
   'world/cities': { method: 'GET', player: true, run: (c, p, a) => players.cities(c, p, a.region) },
+  'world/players': { method: 'GET', player: true, run: (c, p) => players.nearby(c, p) },
   'world/travel': { method: 'POST', player: true, run: (c, p, a) => players.travel(c, p, str(a.city, 'city')) },
   'world/status': { method: 'GET', player: true, run: (c, p) => {
     const w = worldStatus(c), me = loadPlayer(c, p);

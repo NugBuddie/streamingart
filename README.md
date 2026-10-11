@@ -68,7 +68,7 @@ Notable constraints: partial unique index `ux_missions_one_active` (one active m
 
 ## 5. Discord commands
 
-`/register /status /inventory /use /equip /world /cities /travel` · `/mission start|report` · `/shelter view|upgrade|repair|charge|recharge` · `/defend` · `/vault view|deposit|withdraw` · `/craft list|make|repair` · `/planter list|plant|water|harvest` · `/robot view|mode|repair` · `/attack player` · `/crew create|invite|join|leave|kick|expand|info` · `/merchant view|trade` · `/voidcoins` · `/weblogin` · `/notifications`
+`/register /status /inventory /use /equip /world /cities /players /travel` · `/mission start|report` · `/shelter view|upgrade|repair|charge|recharge` · `/defend` · `/vault view|deposit|withdraw` · `/craft list|make|repair` · `/planter list|plant|water|harvest` · `/robot view|mode|repair` · `/attack player` · `/crew create|invite|join|leave|kick|expand|info` · `/merchant view|trade` · `/voidcoins` · `/weblogin` · `/notifications`
 
 ## 6. Web client
 

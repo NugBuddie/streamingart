@@ -20,6 +20,7 @@ export const commandBuilders = [
   new SlashCommandBuilder().setName('cities').setDescription('List the 50 cities')
     .addStringOption((o) => o.setName('region').setDescription('Filter by region').addChoices(
       ...['ashfall', 'rustbelt', 'glasslands', 'deadmarsh', 'ironcoast'].map((r) => ({ name: r, value: r })))),
+  new SlashCommandBuilder().setName('players').setDescription('Who is in your city and who you can raid'),
   new SlashCommandBuilder().setName('travel').setDescription('Travel to a city')
     .addStringOption((o) => o.setName('city').setDescription('Destination').setRequired(true).setAutocomplete(true)),
 

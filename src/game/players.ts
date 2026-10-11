@@ -205,3 +205,26 @@ export function travel(ctx: Ctx, pid: number, cityQ: string): Result {
     ]);
   });
 }
+
+/** Scavengers whose shelter is in the player's current city (= valid raid targets) plus who else is here. */
+export function nearby(ctx: Ctx, pid: number): Result {
+  const { db } = ctx;
+  const me = loadPlayer(ctx, pid);
+  const now = ctx.now();
+  const rows = db.prepare(`SELECT p.id, p.name, p.level, p.karma, p.protected_until, p.raid_shield_until, p.home_city_id, p.city_id,
+      (SELECT c.tag FROM crew_members m JOIN crews c ON c.id = m.crew_id WHERE m.player_id = p.id) AS crew_tag,
+      (SELECT created_at FROM attack_log a WHERE a.kind = 'raid' AND a.attacker_id = ? AND a.defender_id = p.id ORDER BY a.id DESC LIMIT 1) AS last_raid
+    FROM players p WHERE p.id <> ? AND (p.home_city_id = ? OR p.city_id = ?) ORDER BY p.level DESC, p.name LIMIT 40`).all(pid, pid, me.city_id, me.city_id) as any[];
+  const cd = economy(db).raid_cooldown_minutes * MIN;
+  const list = rows.map((r) => {
+    const home = r.home_city_id === me.city_id;
+    const reason = !home ? 'shelter is elsewhere' : r.protected_until > now ? `new-player protection ${Math.ceil((r.protected_until - now) / MIN)}m`
+      : r.raid_shield_until > now ? `raid shield ${Math.ceil((r.raid_shield_until - now) / MIN)}m`
+      : r.last_raid && now - r.last_raid < cd ? `cooldown ${Math.ceil((cd - (now - r.last_raid)) / MIN)}m` : null;
+    return { name: r.name, level: r.level, crew: r.crew_tag, criminal: isCriminal(r), home, present: r.city_id === me.city_id, raidable: home && !reason, reason };
+  });
+  const lines = list.length ? list.map((x) => `${x.raidable ? '⚔️' : '🛡️'} **${x.name}** L${x.level}${x.crew ? ` [${x.crew}]` : ''}${x.criminal ? ' 🏴' : ''} — ${x.home ? 'shelter here' : 'visiting'}${x.present ? ', in town' : ''}${x.reason ? ` · ${x.reason}` : ' · **can be raided**'}`)
+    : ['Nobody else is around. Travel to another city, or invite a friend to /register.'];
+  lines.push('', `You are in **${CITY_BY_ID[me.city_id].name}**. Raid with \`/attack player\` (costs ${economy(db).raid_energy_cost}⚡). Vaults are raid-proof.`);
+  return result('Scavengers nearby', lines, { players: list, city: me.city_id });
+}

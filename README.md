@@ -18,13 +18,13 @@ Scavenge 50 cities, craft weapons and a shelter, farm on your roof, fight monste
         players · missions · shelter · crafting · farming · crews · merchant · raids · world(tick)
                                    src/game/*.ts  (synchronous, transactional services)
                                            │
-                       src/db  (better-sqlite3, WAL, BEGIN IMMEDIATE) ── migrations/001_init.sql
+                       src/db  (node:sqlite, WAL, BEGIN IMMEDIATE) ── migrations/001_init.sql
                                            │
                          static content: src/data/*.ts (items, recipes, crops, 50 cities, monsters)
 ```
 
 * **One rules layer.** Every action returns `{ title, lines[], data }`. Discord renders it as an embed, the web client as cards (and uses `data` for structured widgets). Rules are never duplicated.
-* **Synchronous services + `BEGIN IMMEDIATE`.** `better-sqlite3` is synchronous, so each action is one atomic transaction (`tx()`); two processes (bot + web) can share the same DB file safely (WAL + `busy_timeout`).
+* **Synchronous services + `BEGIN IMMEDIATE`.** Node's built-in `node:sqlite` (wrapped in `src/db/sqlite.ts`, no native add-on to compile) is synchronous, so each action is one atomic transaction (`tx()`); two processes (bot + web) can share the same DB file safely (WAL + `busy_timeout`).
 * **Content in code, state in SQL.** Items/recipes/monsters/cities are TypeScript data (add one entry, no migration). Cities are upserted into the `cities` table at start so SQL can join on them. The DB stores only ids.
 * **World ticker** (`src/game/world.ts`, every `TICK_SECONDS`, plus lazily on each action): storms, monster attacks on shelters, expiring merchants, resolving finished missions. It is **idempotent** (see §3), so it is safe to run in the bot process, the web process, or both.
 * **Notifications outbox.** Raids/storms/monsters/finished missions are written to `notifications`; the bot DMs undelivered rows (3 attempts), the web client lists them.
@@ -75,6 +75,8 @@ Notable constraints: partial unique index `ux_missions_one_active` (one active m
 Static SPA in `src/web/public` (no build step) over `GET|POST /api/<group>/<action>` (same names as the actions, e.g. `GET /api/player/status`, `POST /api/mission/start {"length":"quick"}`). Auth: run `/weblogin` in Discord → one-time 8-character code (10 min) → `POST /api/auth/exchange` → 30-day bearer token (only its SHA-256 is stored). For local development set `WEB_DEV_LOGIN=1` for name-only login. Discord OAuth2 can replace the code flow later by calling `issueSession()` after verifying the user (`src/game/auth.ts`).
 
 ## 7. Setup & deployment
+
+Requires **Node.js 22.5 or newer** (Node 22, 24 and later all work; no Visual Studio / build tools needed).
 
 ```bash
 npm install

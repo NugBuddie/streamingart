@@ -1,10 +1,10 @@
-import Database from 'better-sqlite3';
+import { Database, type DB } from './sqlite.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CITIES } from '../data/world.js';
 
-export type DB = Database.Database;
+export type { DB };
 
 export function openDb(file: string): DB {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });

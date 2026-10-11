@@ -1,0 +1,11 @@
+# Netlify hosts only the browser client; the game server (bot + API) runs on your game host.
+[build]
+  publish = "src/web/public"
+
+# Forward API calls to the game server so the browser sees one origin (no CORS, tokens stay same-origin).
+# >>> EDIT the address below to your game server's public IP:port (the port you set as WEB_PORT). <<<
+[[redirects]]
+  from = "/api/*"
+  to = "http://208.87.101.158:8118/api/:splat"
+  status = 200
+  force = true

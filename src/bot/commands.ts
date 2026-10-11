@@ -88,7 +88,31 @@ export const commandBuilders = [
     .addSubcommand(sub('leave', 'Leave your crew'))
     .addSubcommand(sub('kick', 'Remove a member (owner)', (s) => s.addUserOption((o) => o.setName('user').setDescription('Who').setRequired(true))))
     .addSubcommand(sub('expand', 'Buy one more crew slot with Void Coins (owner)'))
-    .addSubcommand(sub('info', 'Crew roster and perks')),
+    .addSubcommand(sub('info', 'Crew roster and perks'))
+    .addSubcommand(sub('vault', 'Open the crew vault (leader / trusted members)'))
+    .addSubcommand(sub('deposit', 'Put items from your inventory into the crew vault', (s) =>
+      s.addStringOption((o) => o.setName('item').setDescription('Item').setRequired(true).setAutocomplete(true))
+        .addIntegerOption((o) => o.setName('qty').setDescription('Quantity').setMinValue(1))))
+    .addSubcommand(sub('reward', 'Give items from the crew vault to a member (leader / trusted)', (s) =>
+      s.addStringOption((o) => o.setName('item').setDescription('Item').setRequired(true).setAutocomplete(true))
+        .addIntegerOption((o) => o.setName('qty').setDescription('Quantity').setMinValue(1))
+        .addUserOption((o) => o.setName('user').setDescription('Recipient (default: yourself)'))))
+    .addSubcommand(sub('perms', 'Leader: grant or revoke vault access / raid command', (s) =>
+      s.addUserOption((o) => o.setName('user').setDescription('Member').setRequired(true))
+        .addBooleanOption((o) => o.setName('vault').setDescription('Can open the vault, withdraw and reward'))
+        .addBooleanOption((o) => o.setName('raid').setDescription('Can open and launch crew raids')))),
+
+  new SlashCommandBuilder().setName('crewraid').setDescription('Group raids on monsters, abandoned buildings and rival crews')
+    .addSubcommand(sub('targets', 'What can your crew raid in this city?'))
+    .addSubcommand(sub('start', 'Open a raid lobby (leader / trusted)', (s) =>
+      s.addStringOption((o) => o.setName('kind').setDescription('Raid type').setRequired(true).addChoices(
+        { name: 'monster nest', value: 'monster' }, { name: 'abandoned building', value: 'building' }, { name: 'rival crew', value: 'crew' }))
+        .addStringOption((o) => o.setName('target').setDescription('Monster id or rival crew name (see /crewraid targets)'))))
+    .addSubcommand(sub('join', 'Join your crew\'s open raid lobby (costs energy, food, water)'))
+    .addSubcommand(sub('leave', 'Leave the lobby and get refunded'))
+    .addSubcommand(sub('launch', 'Launch the raid (organiser / leader)'))
+    .addSubcommand(sub('cancel', 'Cancel the lobby and refund everyone'))
+    .addSubcommand(sub('status', 'Lobby status and last raid result')),
 
   new SlashCommandBuilder().setName('merchant').setDescription('The Wandering Merchant')
     .addSubcommand(sub('view', 'See who is here and their offers'))

@@ -50,8 +50,13 @@ export function route(i: ChatInputCommandInteraction): Route {
         case 'leave': return { action: 'crew/leave', args: {} };
         case 'kick': return { action: 'crew/kick', args: user() };
         case 'expand': return { action: 'crew/expand', args: {} };
+        case 'vault': return { action: 'crew/vault', args: {}, ephemeral: true };
+        case 'deposit': return { action: 'crew/deposit', args: { item: o.getString('item', true), qty: o.getInteger('qty') ?? 1 } };
+        case 'reward': { const u = o.getUser('user'); return { action: 'crew/reward', args: { item: o.getString('item', true), qty: o.getInteger('qty') ?? 1, ...(u ? { discordId: u.id } : {}) } }; }
+        case 'perms': return { action: 'crew/perms', args: { discordId: o.getUser('user', true).id, vault: o.getBoolean('vault') ?? undefined, raid: o.getBoolean('raid') ?? undefined } };
         default: return { action: 'crew/info', args: {} };
       }
+    case 'crewraid': return { action: `crewraid/${sub}`, args: { kind: o.getString('kind') ?? undefined, target: o.getString('target') ?? undefined }, ephemeral: sub === 'targets' };
     case 'merchant': return sub === 'trade' ? { action: 'merchant/trade', args: { offer: o.getInteger('offer', true) } } : { action: 'merchant/view', args: {} };
     case 'voidcoins': return { action: 'voidcoins/view', args: {}, ephemeral: true };
     case 'weblogin': return { action: 'web/linkcode', args: {}, ephemeral: true };

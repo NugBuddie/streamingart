@@ -170,3 +170,7 @@ export const bar = (v: number, max: number, w = 10) => {
   const f = Math.max(0, Math.min(w, Math.round((v / max) * w)));
   return '▰'.repeat(f) + '▱'.repeat(w - f);
 };
+
+/** True while the player has paid into a crew raid lobby that has not launched (blocks travel / missions). */
+export const inOpenCrewRaid = (db: DB, pid: number): boolean =>
+  !!db.prepare("SELECT 1 FROM crew_raid_members m JOIN crew_raids r ON r.id = m.raid_id WHERE m.player_id = ? AND r.status = 'recruiting'").get(pid);

@@ -11,6 +11,7 @@ import { type Ctx } from './ctx.js';
 import { worldState, notify, addItem, addTo, lootText, structureLevel, inventory, type ShelterRow } from './store.js';
 import { expireMerchants } from './merchant.js';
 import { resolve } from './missions.js';
+import { expireLobbies } from './crewraids.js';
 import { Rng, hashSeed } from './rng.js';
 import { CITY_BY_ID, ARCHETYPES, MONSTERS } from '../data/world.js';
 import { MIN, turretDamage } from '../data/progression.js';
@@ -135,6 +136,7 @@ export function tick(ctx: Ctx, force = false): void {
     db.prepare('DELETE FROM web_link_codes WHERE expires_at < ?').run(now - 60 * MIN);
     db.prepare('DELETE FROM crew_invites WHERE expires_at < ?').run(now);
   });
+  try { expireLobbies(ctx); } catch (err) { log.error(`crew raid lobby cleanup failed: ${(err as Error).stack ?? err}`); }
   // missions are resolved one-by-one (each in its own tx) so one bad row can't block the rest
   const due = db.prepare("SELECT id FROM missions WHERE status = 'active' AND ends_at <= ?").all(now) as { id: number }[];
   for (const m of due) { try { resolve(ctx, m.id, { notifyPlayer: true }); } catch (err) { log.error(`mission ${m.id} resolve failed: ${(err as Error).stack ?? err}`); } }

@@ -107,14 +107,35 @@ const views = {
       <td>${btn('Raid', 'atk' + (x.raidable ? '' : ' alt'), `data-n="${esc(x.name)}" ${x.raidable ? '' : 'disabled'}`)}</td></tr>`).join('') || '<tr><td class="muted">Nobody else is around.</td></tr>'}</table></div>`;
   },
   async crew() {
-    try {
-      const r = await api('crew/info');
-      return `<div class="card"><h3>${esc(r.title)}</h3>${linesHtml(r.lines)}<div class="row">
-        <input id="inv" placeholder="Scavenger name">${btn('Invite', 'ci alt')}${btn('Expand (🪙)', 'cx alt')}${btn('Leave', 'cl alt')}</div></div>`;
-    } catch {
+    let r;
+    try { r = await api('crew/info'); } catch {
       return `<div class="card"><h3>Found a crew</h3><div class="row"><input id="cn" placeholder="Crew name"><input id="ct" placeholder="TAG" maxlength="5" style="width:80px">${btn('Create', 'cc')}</div></div>
         <div class="card"><h3>Join (needs an invite)</h3><div class="row"><input id="jn" placeholder="Crew name or tag">${btn('Join', 'cj')}</div></div>`;
     }
+    const me = (cache.status ||= (await api('player/status')).data).player;
+    const members = r.data.members, mine = members.find((m) => m.id === me.id);
+    const owner = mine.role === 'owner';
+    const [v, rs, tg, inv] = await Promise.all([api('crew/vault'), api('crewraid/status'), api('crewraid/targets'), api('player/inventory')]);
+    const stack = Object.keys(inv.data.inventory).filter((i) => catalog.items[i]?.kind !== 'weapon' && catalog.items[i]?.kind !== 'tool');
+    const canVault = owner || mine.can_vault, canRaid = owner || mine.can_raid;
+    const t = tg.data;
+    return `<div class="card"><h3>${esc(r.title)}</h3>${linesHtml(r.lines.slice(0, 2))}
+      <table>${members.map((m) => `<tr><td>${m.role === 'owner' ? '👑' : '•'} ${esc(m.name)} L${m.level}</td><td class="muted">${m.on_mission ? '🧭 on mission' : ''}</td>
+        <td>${owner && m.id !== me.id ? `<label><input type="checkbox" class="pv" data-n="${esc(m.name)}" ${m.can_vault ? 'checked' : ''}> 🔑 vault</label> <label><input type="checkbox" class="pr" data-n="${esc(m.name)}" ${m.can_raid ? 'checked' : ''}> ⚔️ raid</label>` : `${m.can_vault ? '🔑 vault ' : ''}${m.can_raid ? '⚔️ raid' : ''}`}</td></tr>`).join('')}</table>
+      <div class="row">${owner ? `<input id="inv" placeholder="Scavenger name">${btn('Invite', 'ci alt')}${btn('Expand (🪙)', 'cx alt')}` : ''}${btn('Leave', 'cl alt')}</div></div>
+
+      <div class="card"><h3>📦 Crew vault</h3>
+        ${canVault ? linesHtml(v.lines.slice(0, v.data.items.length + 1)) : `<p class="muted">${md(v.lines[0])}</p>`}
+        <hr><div class="row"><select id="dep">${stack.map((i) => `<option value="${i}">${esc(catalog.items[i].name)} (${inv.data.inventory[i]})</option>`).join('')}</select><input id="depq" type="number" min="1" value="1" style="width:70px">${btn('Deposit', 'cd')}</div>
+        ${canVault ? `<div class="row" style="margin-top:8px"><select id="rwi">${(v.data.items || []).map((i) => `<option value="${i.item_id}">${esc(catalog.items[i.item_id].name)} (${i.quantity})</option>`).join('')}</select><input id="rwq" type="number" min="1" value="1" style="width:70px">
+          <select id="rwt">${members.map((m) => `<option value="${esc(m.name)}" ${m.id === me.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select>${btn('🎁 Reward', 'cw')}</div>` : ''}</div>
+
+      <div class="card"><h3>⚔️ Crew raids</h3>${linesHtml(rs.lines)}
+        ${rs.data.raid ? `<div class="row">${btn('Join', 'rj')}${btn('Leave', 'rl alt')}${canRaid ? btn('🚀 Launch', 'rgo') + btn('Cancel', 'rc alt') : ''}</div>` : ''}
+        ${!rs.data.raid && canRaid ? `<hr><p class="muted">Each raider pays energy, food and water. Loot goes to the crew vault.</p><div class="row">
+          <select id="rmon">${t.monsters.map((m) => `<option value="${m.id}">${m.emoji} ${esc(m.name)} nest</option>`).join('')}</select>${btn('Hunt monsters', 'rs', 'data-k="monster"')}
+          ${btn('🏚️ Raid ' + esc(t.building.name), 'rs', 'data-k="building"')}</div>
+          <div class="row" style="margin-top:8px"><select id="rcr">${t.rivals.map((c) => `<option value="${esc(c.name)}" ${c.reason ? 'disabled' : ''}>[${esc(c.tag)}] ${esc(c.name)}${c.reason ? ' — ' + esc(c.reason) : ''}</option>`).join('') || '<option value="">no rival crews in this city</option>'}</select>${btn('Raid rival crew', 'rs', 'data-k="crew"')}</div>` : ''}</div>`;
   },
   async merchant() {
     const [r, v] = await Promise.all([api('merchant/view'), api('voidcoins/view')]);
@@ -150,8 +171,17 @@ const handlers = {
   '.cc': () => act('crew/create', { name: $('#cn').value, tag: $('#ct').value }), '.cj': () => act('crew/join', { name: $('#jn').value }),
   '.ci': () => act('crew/invite', { name: $('#inv').value }), '.cx': () => act('crew/expand', {}), '.cl': () => act('crew/leave', {}),
   '.atk': (e) => act('attack/player', { name: e.dataset.n }),
+  '.cd': () => act('crew/deposit', { item: $('#dep').value, qty: +$('#depq').value }),
+  '.cw': () => act('crew/reward', { item: $('#rwi').value, qty: +$('#rwq').value, name: $('#rwt').value }),
+  '.rs': (e) => act('crewraid/start', { kind: e.dataset.k, target: e.dataset.k === 'monster' ? $('#rmon').value : e.dataset.k === 'crew' ? $('#rcr').value : undefined }),
+  '.rj': () => act('crewraid/join', {}), '.rl': () => act('crewraid/leave', {}), '.rgo': () => act('crewraid/launch', {}), '.rc': () => act('crewraid/cancel', {}),
   '.tr': (e) => act('merchant/trade', { offer: +e.dataset.o }),
 };
+$('#panel').addEventListener('change', (ev) => {
+  const c = ev.target; if (!c.matches('.pv, .pr')) return;
+  const other = $(`${c.matches('.pv') ? '.pr' : '.pv'}[data-n="${c.dataset.n}"]`);
+  act('crew/perms', { name: c.dataset.n, vault: c.matches('.pv') ? c.checked : other.checked, raid: c.matches('.pr') ? c.checked : other.checked }, { quiet: true });
+});
 $('#panel').addEventListener('click', (ev) => {
   const b = ev.target.closest('button'); if (!b) return;
   for (const [sel, fn] of Object.entries(handlers)) if (b.matches(sel)) { fn(b); return; }

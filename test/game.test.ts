@@ -228,3 +228,103 @@ test('players list shows raid targets in the current city', () => {
   assert.equal((r.data as any).players[0].raidable, true);
   void b;
 });
+
+// ------------------------------------------------------------------ crew vault & crew raids
+function crewSetup(prefix: string, n: number, s = setup(), city = 'cinder_gate') {
+  const { ctx, db, reg } = s;
+  const ids = Array.from({ length: n }, (_, i) => reg(`${prefix}${i}`, undefined, city));
+  db.prepare(`UPDATE players SET home_city_id = ?, city_id = ?, created_at = 0, protected_until = 0 WHERE id IN (${ids.join(',')})`).run(city, city);
+  run(ctx, 'crew/create', ids[0], { name: `${prefix} Crew`, tag: prefix.toUpperCase().slice(0, 3) });
+  for (const id of ids.slice(1)) { run(ctx, 'crew/invite', ids[0], { playerId: id }); run(ctx, 'crew/join', id, { name: `${prefix} Crew` }); }
+  db.prepare('UPDATE crews SET created_at = 0 WHERE name = ?').run(`${prefix} Crew`);
+  return { ...s, ids };
+}
+
+test('crew vault: anyone deposits, only leader/trusted take out, leader rewards anyone incl. self', () => {
+  const s = crewSetup('Vlt', 3);
+  const { ctx, db, ids } = s;
+  const [boss, a, b] = ids;
+  addItem(db, a, 'scrap', 10); addItem(db, boss, 'wood', 5);
+  run(ctx, 'crew/deposit', a, { item: 'scrap', qty: 10 });
+  run(ctx, 'crew/deposit', boss, { item: 'wood', qty: 5 });
+  assert.equal(qty(db, a, 'scrap'), 15); // started with 15, deposited 10 of the 10 added => 15 left
+  assert.match(run(ctx, 'crew/vault', a, {}).title, /🔒/);                       // member sees only capacity
+  assert.throws(() => run(ctx, 'crew/reward', a, { item: 'scrap', qty: 1 }), /leader/);
+  assert.match(run(ctx, 'crew/vault', boss, {}).lines.join('\n'), /Scrap/);
+  run(ctx, 'crew/reward', boss, { item: 'scrap', qty: 4, playerId: b });         // to a member
+  run(ctx, 'crew/reward', boss, { item: 'wood', qty: 2 });                        // to himself
+  assert.equal(qty(db, b, 'scrap'), 15 + 4);
+  assert.equal(qty(db, boss, 'wood'), 6 + 2);
+  assert.throws(() => run(ctx, 'crew/perms', a, { playerId: b, vault: true }), /leader/);
+  run(ctx, 'crew/perms', boss, { playerId: a, vault: true });
+  run(ctx, 'crew/reward', a, { item: 'scrap', qty: 1, playerId: a });            // trusted member can now
+  assert.equal((db.prepare("SELECT COUNT(*) n FROM crew_vault_log WHERE kind = 'reward'").get() as any).n, 3);
+  const outsider = s.reg('Outsider');
+  assert.throws(() => run(ctx, 'crew/reward', boss, { item: 'wood', qty: 1, playerId: outsider }), /own crew/);
+});
+
+test('crew raid on a building: costs energy/food/water, loot goes to crew vault, launches once', () => {
+  const s = crewSetup('Bld', 3);
+  const { ctx, db, ids } = s;
+  const [boss, a, b] = ids;
+  assert.throws(() => run(ctx, 'crewraid/start', a, { kind: 'building' }), /leader/);
+  const before = db.prepare('SELECT energy, food, water FROM players WHERE id = ?').get(a) as any;
+  run(ctx, 'crewraid/start', boss, { kind: 'building' });
+  assert.throws(() => run(ctx, 'crewraid/start', boss, { kind: 'building' }), /already/);
+  assert.throws(() => run(ctx, 'crewraid/launch', boss, {}), /at least 2/);
+  run(ctx, 'crewraid/join', a, {});
+  assert.throws(() => run(ctx, 'world/travel', a, { city: 'ember_hollow' }), /crew raid/);
+  assert.throws(() => run(ctx, 'mission/start', a, {}), /crew raid/);
+  run(ctx, 'crewraid/join', b, {});
+  const after = db.prepare('SELECT energy, food, water FROM players WHERE id = ?').get(a) as any;
+  assert.ok(after.energy < before.energy && after.food < before.food && after.water < before.water);
+  const r = run(ctx, 'crewraid/launch', boss, {});
+  assert.match(r.title, /Crew raid/);
+  assert.throws(() => run(ctx, 'crewraid/launch', boss, {}), /no raid lobby/);
+  assert.equal((db.prepare('SELECT COUNT(*) n FROM crew_raid_log').get() as any).n, 1);
+  if ((r.data as any).victory) {
+    const loot = (r.data as any).loot as Record<string, number>;
+    const inVault = (db.prepare('SELECT COALESCE(SUM(quantity),0) n FROM crew_vault').get() as any).n;
+    assert.ok(Object.keys(loot).length > 3 && inVault > 10, 'building loot should be rich');
+  }
+  run(ctx, 'world/travel', a, { city: 'ember_hollow' }); // free again after launch
+});
+
+test('crew raid lobby: leaving/cancelling refunds exactly, expiry cancels', () => {
+  const s = crewSetup('Rfd', 3);
+  const { ctx, db, ids, advance } = s;
+  const [boss, a] = ids;
+  const bars = (id: number) => db.prepare('SELECT energy, food, water FROM players WHERE id = ?').get(id) as any;
+  const b0 = bars(boss), a0 = bars(a);
+  run(ctx, 'crewraid/start', boss, { kind: 'monster' });
+  run(ctx, 'crewraid/join', a, {});
+  run(ctx, 'crewraid/leave', a, {});
+  assert.deepEqual(bars(a), a0);
+  run(ctx, 'crewraid/join', a, {});
+  advance(16 * MIN);
+  tick(ctx, true);
+  assert.equal((db.prepare('SELECT status FROM crew_raids').get() as any).status, 'cancelled');
+  assert.deepEqual(bars(boss), b0);
+  assert.deepEqual(bars(a), a0);
+  run(ctx, 'mission/start', a, { length: 'quick' }); // unblocked
+});
+
+test('crew vs crew raid steals from the rival crew vault, shields them, blocks repeats', () => {
+  const s = setup();
+  const att = crewSetup('Att', 3, s), def = crewSetup('Def', 2, s);
+  const { ctx, db } = s;
+  addItem(db, def.ids[1], 'iron_ingot', 50);
+  run(ctx, 'crew/deposit', def.ids[1], { item: 'iron_ingot', qty: 50 });
+  // make attackers clearly stronger so the outcome is not a coin flip
+  for (const id of att.ids) { db.prepare('UPDATE players SET level = 20 WHERE id = ?').run(id); addItem(db, id, 'bullets', 60); db.prepare("INSERT INTO player_equipment (player_id,item_id,durability,max_durability,equipped,location,created_at) VALUES (?,'rifle',80,80,1,'bag',0)").run(id); }
+  db.prepare('UPDATE players SET hp = 10 WHERE id = ?').run(def.ids[1]); // defender too hurt to defend; owner is alone
+  assert.throws(() => run(ctx, 'crewraid/start', att.ids[0], { kind: 'crew', target: 'Nonexistent' }), /rival crew/);
+  run(ctx, 'crewraid/start', att.ids[0], { kind: 'crew', target: 'Def Crew' });
+  run(ctx, 'crewraid/join', att.ids[1], {}); run(ctx, 'crewraid/join', att.ids[2], {});
+  const r = run(ctx, 'crewraid/launch', att.ids[0], {});
+  assert.equal((r.data as any).victory, true);
+  assert.ok((db.prepare("SELECT quantity q FROM crew_vault v JOIN crews c ON c.id = v.crew_id WHERE c.name = 'Def Crew'").get() as any).q < 50);
+  assert.ok((db.prepare("SELECT quantity q FROM crew_vault v JOIN crews c ON c.id = v.crew_id WHERE c.name = 'Att Crew' AND item_id = 'iron_ingot'").get() as any).q > 0);
+  assert.throws(() => run(ctx, 'crewraid/start', att.ids[0], { kind: 'crew', target: 'Def Crew' }), /shielded|cooldown/);
+  assert.ok((db.prepare('SELECT COUNT(*) n FROM notifications WHERE player_id = ?').get(def.ids[0]) as any).n >= 1);
+});

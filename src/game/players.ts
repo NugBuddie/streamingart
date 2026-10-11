@@ -1,6 +1,6 @@
 import { type Ctx, fail, result, type Result } from './ctx.js';
 import {
-  loadPlayer, shelterOf, addItem, takeItem, inventory, equipmentOf, addEquipment, bar,
+  inOpenCrewRaid, loadPlayer, shelterOf, addItem, takeItem, inventory, equipmentOf, addEquipment, bar,
   vaultUsed, vaultCapacity, isCriminal, economy,
 } from './store.js';
 import { CITY_BY_ID, CITIES, REGIONS, START_CITIES, findCity, travelCost } from '../data/world.js';
@@ -195,6 +195,7 @@ export function travel(ctx: Ctx, pid: number, cityQ: string): Result {
     const p = loadPlayer(ctx, pid);
     if (ctx.db.prepare("SELECT 1 FROM missions WHERE player_id = ? AND status = 'active'").get(pid)) return fail('Finish your mission first (`/mission report`).');
     if (p.city_id === dest.id) return fail('You are already here.');
+    if (inOpenCrewRaid(ctx.db, pid)) return fail('You are signed up for a crew raid. Launch or `/crewraid leave` first.');
     const cost = travelCost(CITY_BY_ID[p.city_id], dest);
     if (p.energy < cost) return fail(`Travel needs ${cost}⚡ energy (you have ${p.energy}).`);
     if (p.food < 3 || p.water < 3) return fail('You are too weak to travel — eat and drink first.');

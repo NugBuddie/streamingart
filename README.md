@@ -35,6 +35,7 @@ Scavenge 50 cities, craft weapons and a shelter, farm on your roof, fight monste
 |---|---|
 | Singletons (`CHECK (id = 1)`) | `economy_stats` (loot multiplier, VC drop rate/caps, VC value, scam rate, crew sizes/costs, raid rules, totals minted/burned), `world_state` (storm & merchant & monster cadence, catch-up cap) |
 | Cursors / idempotent events | `watcher_cursors` (last processed slot per watcher), `world_events` (`event_key` UNIQUE) |
+| Crew vault & raids (migration 002) | `crew_vault`, `crew_vault_log`, `crew_raids` (one open lobby per crew via partial unique index), `crew_raid_members` (what each paid → exact refunds), `crew_raid_log` (`raid_id` UNIQUE) |
 | Entities | `players`, `shelters`, `shelter_structures (player_id, structure)`, `planters (player_id, slot)`, `robots`, `player_inventory (player_id, item_id)`, `player_equipment` (instances w/ durability), `vault_contents`, `missions`, `cities`, `crews`, `crew_members`, `crew_invites`, `merchant_visits/offers/trades` |
 | Append-only logs | `mission_log`, `attack_log`, `monster_attack_log`, `shelter_event_log`, `craft_log`, `upgrade_log`, `void_coin_transactions`, `player_spend_log`, `notifications` |
 | Web | `web_link_codes`, `web_sessions` |
@@ -64,11 +65,13 @@ Notable constraints: partial unique index `ux_missions_one_active` (one active m
 * **Water/food chain:** dirty → purifier (power) → clean water; stove turns 1–5 food crops into 20–50 food and brews tea/coffee/beer (more water than plain water).
 * **Robot:** *mission* mode (+bag space, +5 %/lvl loot) or *home* mode (fights beside turrets, doubles auto-collected monster loot). Turret kills pay loot straight to your inventory.
 * **Crews:** 5 → 10 members (Void-Coin expansion: 40, 60, 80, 100, 120), −3 % mission energy, +2 % loot, +5 % raid power per extra member; no friendly raids.
+* **Crew vault:** a shared stash (200 units, +40 per extra crew slot). **Anyone** in the crew can deposit; only the **leader** (and members the leader trusts with `🔑 vault`) can open it and `/crew reward` items to any member, themselves included. The leader can also grant `⚔️ raid` (open/launch crew raids). Every movement is logged in `crew_vault_log`.
+* **Crew raids** (`/crewraid`): open a lobby, crewmates in the same city join (each pays energy, food **and** water — more than a deep solo mission; short supplies weaken them), then launch (min 2, max 8). Three targets: **monster nests** (boss-sized monster, rich drops), **abandoned buildings** (2–3 guarded waves; flatter loot table + guaranteed premium haul per city type, far better than solo missions) and **rival crews** (fight their defenders and turrets, steal 20 % of each stack from *their* crew vault; 24 h new-crew protection, 2 h shield, 12 h per-pair cooldown). Loot goes to the crew vault. Lobbies expire after 15 min with an exact refund; launch is exactly-once.
 * **Economy:** Void Coins drop rarely on missions (capped 40/day), flow through the Wandering Merchant (cap 150/day earned), and are burned by crew expansion and merchant goods. Merchant offers carry an honest fairness label computed from item values: 🌟/✅ *Real deal*, 🟡 *Overpriced*, ⚠️ *Potential scam*.
 
 ## 5. Discord commands
 
-`/register /status /inventory /use /equip /world /cities /players /travel` · `/mission start|report` · `/shelter view|upgrade|repair|charge|recharge` · `/defend` · `/vault view|deposit|withdraw` · `/craft list|make|repair` · `/planter list|plant|water|harvest` · `/robot view|mode|repair` · `/attack player` · `/crew create|invite|join|leave|kick|expand|info` · `/merchant view|trade` · `/voidcoins` · `/weblogin` · `/notifications`
+`/register /status /inventory /use /equip /world /cities /players /travel` · `/mission start|report` · `/shelter view|upgrade|repair|charge|recharge` · `/defend` · `/vault view|deposit|withdraw` · `/craft list|make|repair` · `/planter list|plant|water|harvest` · `/robot view|mode|repair` · `/attack player` · `/crew create|invite|join|leave|kick|expand|info|vault|deposit|reward|perms` · `/crewraid targets|start|join|leave|launch|cancel|status` · `/merchant view|trade` · `/voidcoins` · `/weblogin` · `/notifications`
 
 ## 6. Web client
 

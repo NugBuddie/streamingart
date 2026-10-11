@@ -1,5 +1,5 @@
 import { type Ctx, fail, result, type Result } from './ctx.js';
-import { loadPlayer, economy, vcApply, notify, type PlayerRow } from './store.js';
+import { loadPlayer, economy, vcApply, notify, inOpenCrewRaid, type PlayerRow } from './store.js';
 import { CITY_BY_ID } from '../data/world.js';
 import { MIN } from '../data/progression.js';
 import { tx } from '../db/index.js';
@@ -74,6 +74,7 @@ export function leave(ctx: Ctx, pid: number): Result {
   return tx(ctx.db, () => {
     const { db } = ctx;
     const c = need(db, pid);
+    if (inOpenCrewRaid(db, pid)) fail('You are in a crew raid lobby. `/crewraid leave` first.');
     db.prepare('DELETE FROM crew_members WHERE player_id = ?').run(pid);
     const heir = db.prepare('SELECT player_id FROM crew_members WHERE crew_id = ? ORDER BY joined_at LIMIT 1').get(c.id) as any;
     if (!heir) { db.prepare('DELETE FROM crews WHERE id = ?').run(c.id); return result('Crew disbanded', ['You were the last member; the crew is gone.']); }
@@ -91,6 +92,7 @@ export function kick(ctx: Ctx, pid: number, targetId: number): Result {
     const c = need(db, pid);
     if (c.role !== 'owner') fail('Only the owner can kick.');
     if (targetId === pid) fail('Use /crew leave.');
+    if (inOpenCrewRaid(db, targetId)) fail('That member is in a crew raid lobby right now. Cancel the raid first.');
     const r = db.prepare('DELETE FROM crew_members WHERE crew_id = ? AND player_id = ?').run(c.id, targetId);
     if (!r.changes) fail('That player is not in your crew.');
     notify(ctx, targetId, 'crew', `You were removed from [${c.tag}] ${c.name}.`);
@@ -117,7 +119,7 @@ export function info(ctx: Ctx, pid: number): Result {
   const { db } = ctx;
   const c = need(db, pid);
   const e = economy(db);
-  const members = db.prepare(`SELECT p.id, p.name, p.level, p.city_id, m.role,
+  const members = db.prepare(`SELECT p.id, p.name, p.level, p.city_id, m.role, m.can_vault, m.can_raid,
       EXISTS(SELECT 1 FROM missions x WHERE x.player_id = p.id AND x.status = 'active') AS on_mission
     FROM crew_members m JOIN players p ON p.id = m.player_id WHERE m.crew_id = ? ORDER BY m.joined_at`).all(c.id) as any[];
   const b = crewBonus(db, pid);
@@ -125,7 +127,7 @@ export function info(ctx: Ctx, pid: number): Result {
   return result(`[${c.tag}] ${c.name}`, [
     `Members ${c.members}/${c.max_members}${cost !== null ? ` · expand cost ${cost} 🪙` : ' · max size'}`,
     `Perks: -${Math.round(b.energyDiscount * 100)}% mission energy, +${Math.round(b.lootBonus * 100)}% loot, +${Math.round(b.raidBonus * 100)}% raid power`,
-    ...members.map((m) => `${m.role === 'owner' ? '👑' : '•'} ${m.name} (L${m.level}) — ${CITY_BY_ID[m.city_id]?.name}${m.on_mission ? ' 🧭' : ''}`),
+    ...members.map((m) => `${m.role === 'owner' ? '👑' : '•'} ${m.name} (L${m.level}) — ${CITY_BY_ID[m.city_id]?.name}${m.on_mission ? ' 🧭' : ''}${m.can_vault ? ' 🔑vault' : ''}${m.can_raid ? ' ⚔️raid' : ''}`),
   ], { crew: c, members, perks: b, expandCost: cost });
 }
 

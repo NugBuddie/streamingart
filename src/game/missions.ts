@@ -1,6 +1,6 @@
 import { type Ctx, fail, result, type Result } from './ctx.js';
 import {
-  loadPlayer, shelterOf, economy, takeItem, addItem, inventory, ratchetOf, wear, vcApply, notify, addTo, lootText, type PlayerRow,
+  inOpenCrewRaid, loadPlayer, shelterOf, economy, takeItem, addItem, inventory, ratchetOf, wear, vcApply, notify, addTo, lootText, type PlayerRow,
 } from './store.js';
 import { crewBonus, areCrewmates } from './crews.js';
 import { duel, npcStriker, playerStriker } from './combat.js';
@@ -15,7 +15,7 @@ import { log } from '../logger.js';
 
 // ------------------------------------------------------------------ start
 /** Auto-eat/drink the cheapest safe items from the bag to cover a shortfall ("bring food & water with you"). */
-function provision(ctx: Ctx, p: PlayerRow, need: { food: number; water: number }): { food: number; water: number; used: string[] } {
+export function provision(ctx: Ctx, p: PlayerRow, need: { food: number; water: number }): { food: number; water: number; used: string[] } {
   const { db } = ctx;
   let { food, water } = p;
   const used: string[] = [];
@@ -42,6 +42,7 @@ export function start(ctx: Ctx, pid: number, lengthId = 'standard'): Result {
     const p = loadPlayer(ctx, pid);
     const now = ctx.now();
     if (db.prepare("SELECT 1 FROM missions WHERE player_id = ? AND status = 'active'").get(pid)) return fail('You are already on a mission. `/mission report`');
+    if (inOpenCrewRaid(db, pid)) return fail('You are signed up for a crew raid. Launch or `/crewraid leave` first.');
     if (p.hp < 20) return fail('You are too wounded (HP < 20). Use a bandage or medkit.');
     const crew = crewBonus(db, pid);
     const energy = Math.max(1, Math.ceil(L.energy * (1 - crew.energyDiscount)));

@@ -12,6 +12,8 @@ import * as farming from './farming.js';
 import * as crews from './crews.js';
 import * as merchant from './merchant.js';
 import * as raids from './raids.js';
+import * as crewvault from './crewvault.js';
+import * as crewraids from './crewraids.js';
 import * as auth from './auth.js';
 import { tick, worldStatus } from './world.js';
 import { CITY_BY_ID } from '../data/world.js';
@@ -81,6 +83,18 @@ export const ACTIONS: Record<string, ActionDef> = {
   'crew/leave': { method: 'POST', player: true, run: (c, p) => crews.leave(c, p) },
   'crew/kick': { method: 'POST', player: true, run: (c, p, a) => crews.kick(c, p, target(c, a).id) },
   'crew/expand': { method: 'POST', player: true, run: (c, p) => crews.expand(c, p) },
+
+  'crew/vault': { method: 'GET', player: true, run: (c, p) => crewvault.view(c, p) },
+  'crew/deposit': { method: 'POST', player: true, run: (c, p, a) => crewvault.deposit(c, p, str(String(a.item ?? ''), 'item'), num(a.qty, 1)!) },
+  'crew/reward': { method: 'POST', player: true, run: (c, p, a) => crewvault.reward(c, p, a.name || a.target || a.discordId || a.playerId ? target(c, a).id : undefined, str(String(a.item ?? ''), 'item'), num(a.qty, 1)!) },
+  'crew/perms': { method: 'POST', player: true, run: (c, p, a) => crewvault.setPerms(c, p, target(c, a).id, { vault: a.vault === undefined ? undefined : a.vault === true || a.vault === 'true', raid: a.raid === undefined ? undefined : a.raid === true || a.raid === 'true' }) },
+  'crewraid/targets': { method: 'GET', player: true, run: (c, p) => crewraids.targets(c, p) },
+  'crewraid/start': { method: 'POST', player: true, run: (c, p, a) => crewraids.start(c, p, str(a.kind, 'kind'), a.target) },
+  'crewraid/join': { method: 'POST', player: true, run: (c, p) => crewraids.join(c, p) },
+  'crewraid/leave': { method: 'POST', player: true, run: (c, p) => crewraids.leave(c, p) },
+  'crewraid/cancel': { method: 'POST', player: true, run: (c, p) => crewraids.cancel(c, p) },
+  'crewraid/launch': { method: 'POST', player: true, run: (c, p) => crewraids.launch(c, p) },
+  'crewraid/status': { method: 'GET', player: true, run: (c, p) => crewraids.status(c, p) },
 
   'attack/player': { method: 'POST', player: true, run: (c, p, a) => raids.raid(c, p, target(c, a)) },
 

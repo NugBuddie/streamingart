@@ -7,7 +7,10 @@ export interface Ctx {
 }
 
 /** A user-facing rule violation ("not enough scrap"). Never a bug. */
-export class GameError extends Error {}
+export class GameError extends Error {
+  /** HTTP status hint for the web layer (default 400). */
+  status?: number;
+}
 export const fail = (msg: string): never => { throw new GameError(msg); };
 
 /** Standard shape returned by every action; Discord renders it as an embed, the web client as cards. */

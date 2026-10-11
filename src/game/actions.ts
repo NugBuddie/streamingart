@@ -50,7 +50,7 @@ export const ACTIONS: Record<string, ActionDef> = {
   } },
 
   'mission/start': { method: 'POST', player: true, run: (c, p, a) => missions.start(c, p, a.length ?? 'standard') },
-  'mission/report': { method: 'GET', player: true, run: (c, p) => missions.report(c, p) },
+  'mission/report': { method: 'POST', player: true, run: (c, p) => missions.report(c, p) },
 
   'shelter/view': { method: 'GET', player: true, run: (c, p) => shelter.view(c, p) },
   'shelter/upgrade': { method: 'POST', player: true, run: (c, p, a) => shelter.upgrade(c, p, str(a.target, 'target')) },
